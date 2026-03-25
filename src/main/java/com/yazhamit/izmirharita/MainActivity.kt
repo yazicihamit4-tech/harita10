@@ -323,15 +323,15 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Karşıyaka Belediye İşçisi Görseli
+        // Sinyal 35.5 Logo
         androidx.compose.foundation.Image(
-            painter = painterResource(id = R.drawable.belediye_iscisi),
-            contentDescription = "Karşıyaka Belediyesi İşçisi",
+            painter = painterResource(id = R.drawable.lobby_logo),
+            contentDescription = "Sinyal 35.5 Logo",
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(250.dp)
                 .padding(bottom = 16.dp),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Fit
         )
 
         Spacer(modifier = Modifier.weight(0.2f))
