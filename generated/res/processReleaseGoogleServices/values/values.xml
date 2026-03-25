@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="default_web_client_id" translatable="false">261982435277-p3c3r4ck9o3o5c90uuvqsivgqf9eeh41.apps.googleusercontent.com</string>
+    <string name="firebase_database_url" translatable="false">https://izmirharita-d0d08-default-rtdb.firebaseio.com</string>
+    <string name="gcm_defaultSenderId" translatable="false">261982435277</string>
+    <string name="google_api_key" translatable="false">AIzaSyB02vAvPZQm1YxRxpB8OAtsPSd8QuEU5xU</string>
+    <string name="google_app_id" translatable="false">1:261982435277:android:774be5a5bdb86f41337684</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyB02vAvPZQm1YxRxpB8OAtsPSd8QuEU5xU</string>
+    <string name="google_storage_bucket" translatable="false">izmirharita-d0d08.firebasestorage.app</string>
+    <string name="project_id" translatable="false">izmirharita-d0d08</string>
+</resources>
