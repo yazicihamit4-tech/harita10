@@ -59,6 +59,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
 import com.google.maps.android.compose.*
+import com.google.firebase.messaging.FirebaseMessaging
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -81,7 +82,8 @@ data class Sinyal(
     val photoUri: String? = null,
     val durum: String = "İnceleniyor", // İnceleniyor, Bildirildi, Çözüldü
     val adminCevap: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val fcmToken: String? = null
 )
 
 class MainActivity : ComponentActivity() {
@@ -199,7 +201,23 @@ fun UygulamaNavigasyonu() {
 
                 if (currentUser == null) {
                     // Uygulama açılışında otomatik anonim giriş yap (Google Sign-in yerine)
+    // Ve Android 13+ bildirim izni iste
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "Bildirim izni verilmedi. Bildirim alamayacaksınız.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
                     LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
                         try {
                             val auth = FirebaseAuth.getInstance()
                             if (auth.currentUser == null) {
@@ -265,6 +283,13 @@ fun UygulamaNavigasyonu() {
                                     val dbPass = doc.getString("password")
 
                                     if (dbUser == username && dbPass == password) {
+                                        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                                            if (task.isSuccessful) {
+                                                val token = task.result
+                                                FirebaseFirestore.getInstance().collection("admin_tokens")
+                                                    .document(token).set(mapOf("token" to token))
+                                            }
+                                        }
                                         mevcutEkran = Ekran.ADMIN
                                         showAdminDialog = false
                                         Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
@@ -276,6 +301,13 @@ fun UygulamaNavigasyonu() {
                                     val encodedUser = android.util.Base64.encodeToString(username.toByteArray(), android.util.Base64.NO_WRAP)
                                     val encodedPass = android.util.Base64.encodeToString(password.toByteArray(), android.util.Base64.NO_WRAP)
                                     if (encodedUser == "eWF6aGFtaXQ=" && encodedPass == "NzE1ODU5") {
+                                        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                                            if (task.isSuccessful) {
+                                                val token = task.result
+                                                FirebaseFirestore.getInstance().collection("admin_tokens")
+                                                    .document(token).set(mapOf("token" to token))
+                                            }
+                                        }
                                         mevcutEkran = Ekran.ADMIN
                                         showAdminDialog = false
                                         Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
@@ -748,6 +780,10 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                             uploadedImageUrl = storageRef.downloadUrl.await().toString()
                                         }
 
+                                        val fcmToken = try {
+                                            kotlinx.coroutines.tasks.await(FirebaseMessaging.getInstance().token)
+                                        } catch (e: Exception) { null }
+
                                         val userId = FirebaseAuth.getInstance().currentUser?.uid ?: "anonim"
                                         val yeniSinyal = Sinyal(
                                             id = UUID.randomUUID().toString(),
@@ -924,6 +960,12 @@ fun AdminEkrani() {
                         FirebaseFirestore.getInstance().collection("sinyaller").document(id)
                             .update(mapOf("durum" to durum, "adminCevap" to cevap)).await()
                         Toast.makeText(context, "Güncellendi", Toast.LENGTH_SHORT).show()
+
+                        // Kullanıcıya bildirim gönder
+                        if (cevap.isNotBlank() && sinyal.fcmToken != null) {
+                            NotificationSender.sendNotificationToUser(context, sinyal.fcmToken, durum, cevap)
+                        }
+
                         fetchSinyaller() // Listeyi yenile
                     } catch (e: Exception) {
                         Toast.makeText(context, "Hata: ${e.message}", Toast.LENGTH_SHORT).show()
