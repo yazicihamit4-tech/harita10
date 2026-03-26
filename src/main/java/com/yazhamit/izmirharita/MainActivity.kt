@@ -1107,9 +1107,44 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
                     Text("Belediyeye İlet (WhatsApp)", color = Color.White)
                 }
             }
+
+            var showDeleteDialog by remember { mutableStateOf(false) }
+            Button(
+                onClick = { showDeleteDialog = true },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text("Sinyali Sil")
+            }
+            if (showDeleteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = { Text("Emin misiniz?") },
+                    text = { Text("Bu bildirimi kalıcı olarak silmek istediğinize emin misiniz?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showDeleteDialog = false
+                            onSil(sinyal.id)
+                        }) {
+                            Text("Evet", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteDialog = false }) {
+                            Text("Hayır")
+                        }
+                    }
+                )
+            }
+
         }
     }
 }
+
+        }
+    }
+}
+
 
 @Composable
 fun BildirimKarti(konum: String, sorun: String, durum: String, adminMesaji: String, durumRengi: Color) {
