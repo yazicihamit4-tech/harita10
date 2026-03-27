@@ -806,7 +806,7 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                         NotificationSender.sendNotificationToAdmins(
                                             context = context,
                                             isim = isimSoyisim,
-                                            aciklama = yorum
+                                            mesaj = yorum
                                         )
 
                                         showSuccessDialog = true
