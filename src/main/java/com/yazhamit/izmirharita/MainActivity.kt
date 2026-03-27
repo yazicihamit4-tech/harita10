@@ -954,7 +954,20 @@ fun AdminEkrani() {
         )
 
         tumSinyaller.forEach { sinyal ->
-            AdminBildirimKarti(sinyal = sinyal, onGuncelle = { id, durum, cevap ->
+            AdminBildirimKarti(
+                sinyal = sinyal,
+                onSil = { id ->
+                    coroutineScope.launch {
+                        try {
+                            FirebaseFirestore.getInstance().collection("sinyaller").document(id).delete().await()
+                            Toast.makeText(context, "Sinyal Silindi", Toast.LENGTH_SHORT).show()
+                            fetchSinyaller()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Silme Hatası: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onGuncelle = { id, durum, cevap ->
                 coroutineScope.launch {
                     try {
                         FirebaseFirestore.getInstance().collection("sinyaller").document(id)
@@ -977,15 +990,18 @@ fun AdminEkrani() {
 }
 
 @Composable
-fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> Unit) {
+fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> Unit, onSil: (String) -> Unit) {
     var cevap by remember(sinyal.adminCevap) { mutableStateOf(sinyal.adminCevap) }
     var seciliDurum by remember(sinyal.durum) { mutableStateOf(sinyal.durum) }
+    var isExpanded by remember { mutableStateOf(false) }
     val durumlar = listOf("İnceleniyor", "Bildirildi", "Çözüldü")
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .clickable { isExpanded = !isExpanded }
+
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -999,6 +1015,9 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
             Spacer(modifier = Modifier.height(4.dp))
 
             Text("Sorun: ${sinyal.aciklama}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+
+            if (isExpanded) {
+
             Spacer(modifier = Modifier.height(8.dp))
 
             if (sinyal.photoUri != null) {
@@ -1108,6 +1127,7 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
                 }
             }
 
+
             var showDeleteDialog by remember { mutableStateOf(false) }
             Button(
                 onClick = { showDeleteDialog = true },
@@ -1137,10 +1157,7 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
                 )
             }
 
-        }
-    }
-}
-
+            }
         }
     }
 }
@@ -1151,7 +1168,9 @@ fun BildirimKarti(konum: String, sorun: String, durum: String, adminMesaji: Stri
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .clickable { isExpanded = !isExpanded }
+
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
