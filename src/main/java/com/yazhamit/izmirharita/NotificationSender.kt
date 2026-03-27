@@ -14,9 +14,9 @@ object NotificationSender {
 
     // Kendi sunucunuzu ayağa kaldırdığınızda bu URL'i o sunucunun IP'si veya Domain'i ile değiştirin.
     // Şimdilik Android Emulator üzerinden yerel makineye bağlanmak için 10.0.2.2 kullanıyoruz.
-    private const val BACKEND_URL = "http://10.0.2.2:3000"
+    // Ancak dinamik olarak backendUrl parametresi alacağız.
 
-    fun sendNotificationToUser(context: Context, fcmToken: String, durum: String, cevap: String) {
+    fun sendNotificationToUser(context: Context, fcmToken: String, durum: String, cevap: String, backendUrl: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val jsonObject = JSONObject().apply {
@@ -28,7 +28,7 @@ object NotificationSender {
                 val requestBody = jsonObject.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
                 val request = Request.Builder()
-                    .url("$BACKEND_URL/notify-user")
+                    .url("$backendUrl/notify-user")
                     .post(requestBody)
                     .addHeader("Content-Type", "application/json")
                     .build()
@@ -43,7 +43,7 @@ object NotificationSender {
         }
     }
 
-    fun sendNotificationToAdmins(context: Context, isim: String, mesaj: String) {
+    fun sendNotificationToAdmins(context: Context, isim: String, mesaj: String, backendUrl: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val jsonObject = JSONObject().apply {
@@ -54,7 +54,7 @@ object NotificationSender {
                 val requestBody = jsonObject.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
                 val request = Request.Builder()
-                    .url("$BACKEND_URL/notify-admin")
+                    .url("$backendUrl/notify-admin")
                     .post(requestBody)
                     .addHeader("Content-Type", "application/json")
                     .build()

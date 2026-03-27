@@ -796,18 +796,22 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                             telefon = telefon,
                                             adres = addressText,
                                             aciklama = yorum,
-                                            photoUri = uploadedImageUrl
+                                            photoUri = uploadedImageUrl,
+                                            fcmToken = fcmToken
                                         )
 
                                         FirebaseFirestore.getInstance().collection("sinyaller")
                                             .document(yeniSinyal.id)
                                             .set(yeniSinyal).await()
 
-                                        NotificationSender.sendNotificationToAdmins(
-                                            context = context,
-                                            isim = isimSoyisim,
-                                            mesaj = yorum
-                                        )
+                                        getBackendUrl { url ->
+                                            NotificationSender.sendNotificationToAdmins(
+                                                context = context,
+                                                isim = isimSoyisim,
+                                                mesaj = yorum,
+                                                backendUrl = url
+                                            )
+                                        }
 
                                         showSuccessDialog = true
                                         flashLightEffect(context, coroutineScope)
@@ -925,6 +929,21 @@ fun TakipEkrani() {
     }
 }
 
+
+fun getBackendUrl(onResult: (String) -> Unit) {
+    FirebaseFirestore.getInstance().collection("admin_config").document("backend")
+        .get().addOnSuccessListener { doc ->
+            val url = doc.getString("url")
+            if (!url.isNullOrBlank()) {
+                onResult(url)
+            } else {
+                onResult("http://10.0.2.2:3000") // Fallback
+            }
+        }.addOnFailureListener {
+            onResult("http://10.0.2.2:3000")
+        }
+}
+
 @Composable
 fun AdminEkrani() {
     var tumSinyaller by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
@@ -994,7 +1013,9 @@ fun AdminEkrani() {
 
                         // Kullanıcıya bildirim gönder
                         if (cevap.isNotBlank() && sinyal.fcmToken != null) {
-                            NotificationSender.sendNotificationToUser(context, sinyal.fcmToken, durum, cevap)
+                            getBackendUrl { url ->
+                                NotificationSender.sendNotificationToUser(context, sinyal.fcmToken, durum, cevap, url)
+                            }
                         }
 
                         fetchSinyaller() // Listeyi yenile

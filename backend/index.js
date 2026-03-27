@@ -78,4 +78,4 @@ app.post('/notify-admin', async (req, res) => {
 app.get('/', (req, res) => res.send('Izmir Harita Notification Backend API Çalışıyor'));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Sunucu ${PORT} portunda çalışıyor.`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Sunucu 0.0.0.0:${PORT} portunda çalışıyor. Ağdaki cihazlar erişebilir.`));
