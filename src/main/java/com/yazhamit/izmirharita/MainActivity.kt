@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
@@ -43,6 +44,7 @@ import androidx.core.content.ContextCompat
 import android.location.Location
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.tasks.await
 import java.util.Locale
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.model.BitmapDescriptor
@@ -781,7 +783,7 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                         }
 
                                         val fcmToken = try {
-                                            kotlinx.coroutines.tasks.await(FirebaseMessaging.getInstance().token)
+                                            FirebaseMessaging.getInstance().token.await()
                                         } catch (e: Exception) { null }
 
                                         val userId = FirebaseAuth.getInstance().currentUser?.uid ?: "anonim"
@@ -800,6 +802,12 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                         FirebaseFirestore.getInstance().collection("sinyaller")
                                             .document(yeniSinyal.id)
                                             .set(yeniSinyal).await()
+
+                                        NotificationSender.sendNotificationToAdmins(
+                                            context = context,
+                                            isim = isimSoyisim,
+                                            aciklama = yorum
+                                        )
 
                                         showSuccessDialog = true
                                         flashLightEffect(context, coroutineScope)
@@ -920,14 +928,16 @@ fun TakipEkrani() {
 @Composable
 fun AdminEkrani() {
     var tumSinyaller by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
+    var isDescending by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
     fun fetchSinyaller() {
         coroutineScope.launch {
             try {
+                val direction = if (isDescending) Query.Direction.DESCENDING else Query.Direction.ASCENDING
                 val snapshot = FirebaseFirestore.getInstance().collection("sinyaller")
-                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .orderBy("timestamp", direction)
                     .get().await()
                 tumSinyaller = snapshot.toObjects(Sinyal::class.java)
             } catch (e: Exception) {
@@ -936,7 +946,7 @@ fun AdminEkrani() {
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isDescending) {
         fetchSinyaller()
     }
 
@@ -946,12 +956,20 @@ fun AdminEkrani() {
             .padding(16.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = "Admin Paneli - Tüm Sinyaller",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Tüm Sinyaller",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            TextButton(onClick = { isDescending = !isDescending }) {
+                Text(if (isDescending) "↓ Yeniden Eskiye" else "↑ Eskiden Yeniye")
+            }
+        }
 
         tumSinyaller.forEach { sinyal ->
             AdminBildirimKarti(
@@ -1000,8 +1018,7 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .clickable { isExpanded = !isExpanded }
-
+            .clickable { isExpanded = !isExpanded },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -1168,9 +1185,7 @@ fun BildirimKarti(konum: String, sorun: String, durum: String, adminMesaji: Stri
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .clickable { isExpanded = !isExpanded }
-
+            .padding(vertical = 8.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
