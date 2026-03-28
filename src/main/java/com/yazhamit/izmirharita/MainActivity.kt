@@ -805,16 +805,10 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                             .document(yeniSinyal.id)
                                             .set(yeniSinyal).await()
 
-                                                                                    NotificationSender.sendNotificationToAdmins(
-                                                context = context,
-                                                isim = isimSoyisim,
-                                                mesaj = yorum
-                                            ) { success, msg ->
-                                                coroutineScope.launch(Dispatchers.Main) {
-                                                    if (!success) {
-                                                        Toast.makeText(context, "Adminlere Bildirim Giderken Sorun Oluştu:
-$msg", Toast.LENGTH_LONG).show()
-                                                    }
+                                        NotificationSender.sendNotificationToAdmins(context, isimSoyisim, yorum) { success, msg ->
+                                            coroutineScope.launch(Dispatchers.Main) {
+                                                if (!success) {
+                                                    Toast.makeText(context, "Adminlere Bildirim Hatası: $msg", Toast.LENGTH_LONG).show()
                                                 }
                                             }
                                         }
@@ -936,10 +930,6 @@ fun TakipEkrani() {
 }
 
 
-        }.addOnFailureListener {
-            onResult("http://10.0.2.2:3000")
-        }
-}
 
 @Composable
 fun AdminEkrani() {
@@ -1014,11 +1004,10 @@ fun AdminEkrani() {
 
                         // Kullanıcıya bildirim gönder
                         if (cevap.isNotBlank() && sinyal.fcmToken != null) {
-                                                            NotificationSender.sendNotificationToUser(context, sinyal.fcmToken, durum, cevap) { success, msg ->
+                            NotificationSender.sendNotificationToUser(context, sinyal.fcmToken, durum, cevap) { success, msg ->
                                 coroutineScope.launch(Dispatchers.Main) {
                                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 }
-                            }
                             }
                         }
 
