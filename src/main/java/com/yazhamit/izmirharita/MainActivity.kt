@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
@@ -804,13 +805,18 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                             .document(yeniSinyal.id)
                                             .set(yeniSinyal).await()
 
-                                        getBackendUrl { url ->
-                                            NotificationSender.sendNotificationToAdmins(
+                                                                                    NotificationSender.sendNotificationToAdmins(
                                                 context = context,
                                                 isim = isimSoyisim,
-                                                mesaj = yorum,
-                                                backendUrl = url
-                                            )
+                                                mesaj = yorum
+                                            ) { success, msg ->
+                                                coroutineScope.launch(Dispatchers.Main) {
+                                                    if (!success) {
+                                                        Toast.makeText(context, "Adminlere Bildirim Giderken Sorun Oluştu:
+$msg", Toast.LENGTH_LONG).show()
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         showSuccessDialog = true
@@ -930,15 +936,6 @@ fun TakipEkrani() {
 }
 
 
-fun getBackendUrl(onResult: (String) -> Unit) {
-    FirebaseFirestore.getInstance().collection("admin_config").document("backend")
-        .get().addOnSuccessListener { doc ->
-            val url = doc.getString("url")
-            if (!url.isNullOrBlank()) {
-                onResult(url)
-            } else {
-                onResult("http://10.0.2.2:3000") // Fallback
-            }
         }.addOnFailureListener {
             onResult("http://10.0.2.2:3000")
         }
@@ -985,8 +982,12 @@ fun AdminEkrani() {
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
-            TextButton(onClick = { isDescending = !isDescending }) {
-                Text(if (isDescending) "↓ Yeniden Eskiye" else "↑ Eskiden Yeniye")
+            Row {
+                TextButton(onClick = { isDescending = !isDescending }) {
+                    Text(if (isDescending) "↓ Eskiye" else "↑ Yeniye")
+                }
+
+
             }
         }
 
@@ -1013,8 +1014,11 @@ fun AdminEkrani() {
 
                         // Kullanıcıya bildirim gönder
                         if (cevap.isNotBlank() && sinyal.fcmToken != null) {
-                            getBackendUrl { url ->
-                                NotificationSender.sendNotificationToUser(context, sinyal.fcmToken, durum, cevap, url)
+                                                            NotificationSender.sendNotificationToUser(context, sinyal.fcmToken, durum, cevap) { success, msg ->
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                }
+                            }
                             }
                         }
 
