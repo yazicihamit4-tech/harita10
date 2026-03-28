@@ -28,9 +28,17 @@ import org.json.JSONObject
  */
 object NotificationSender {
 
-    // Kendi Firebase projenizin "Project ID" sini buraya yazın:
-    private const val PROJECT_ID = "izmirharita"
-    private const val FCM_API_URL = "https://fcm.googleapis.com/v1/projects/$PROJECT_ID/messages:send"
+    private fun getProjectId(context: Context): String? {
+        return try {
+            val inputStream = context.resources.openRawResource(R.raw.service_account)
+            val jsonString = inputStream.bufferedReader().use { it.readText() }
+            val jsonObject = JSONObject(jsonString)
+            jsonObject.getString("project_id")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 
     private fun getAccessToken(context: Context): String? {
         return try {
@@ -76,8 +84,15 @@ object NotificationSender {
 
                 val requestBody = root.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
+                val projectId = getProjectId(context)
+                if (projectId == null) {
+                    onResult(false, "Service Account JSON dosyasında 'project_id' bulunamadı.")
+                    return@launch
+                }
+                val fcmApiUrl = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send"
+
                 val request = Request.Builder()
-                    .url(FCM_API_URL)
+                    .url(fcmApiUrl)
                     .post(requestBody)
                     .addHeader("Authorization", "Bearer $accessToken")
                     .addHeader("Content-Type", "application/json")
@@ -145,8 +160,15 @@ object NotificationSender {
 
                     val requestBody = root.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
+                    val projectId = getProjectId(context)
+                    if (projectId == null) {
+                        onResult(false, "Service Account JSON dosyasında 'project_id' bulunamadı.")
+                        return@launch
+                    }
+                    val fcmApiUrl = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send"
+
                     val request = Request.Builder()
-                        .url(FCM_API_URL)
+                        .url(fcmApiUrl)
                         .post(requestBody)
                         .addHeader("Authorization", "Bearer $accessToken")
                         .addHeader("Content-Type", "application/json")
