@@ -6,6 +6,16 @@ import android.content.Intent
 import android.os.Bundle
 import android.content.Context
 import android.hardware.camera2.CameraManager
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.gms.ads.LoadAdError
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.AdError
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -18,10 +28,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
@@ -43,6 +55,7 @@ import androidx.core.content.ContextCompat
 import android.location.Location
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.tasks.await
 import java.util.Locale
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.model.BitmapDescriptor
@@ -59,6 +72,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
 import com.google.maps.android.compose.*
+import com.google.firebase.messaging.FirebaseMessaging
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -81,13 +95,53 @@ data class Sinyal(
     val photoUri: String? = null,
     val durum: String = "İnceleniyor", // İnceleniyor, Bildirildi, Çözüldü
     val adminCevap: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val fcmToken: String? = null
 )
+
+
+object AdManager {
+    var mInterstitialAd: InterstitialAd? = null
+
+    fun loadInterstitialAd(context: Context) {
+        val adRequest = AdRequest.Builder().build()
+        // Kullanıcının "Geçiş Reklam Kodu"
+        InterstitialAd.load(context, "ca-app-pub-5879474591831999/4703655274", adRequest, object : InterstitialAdLoadCallback() {
+            override fun onAdFailedToLoad(adError: LoadAdError) {
+                mInterstitialAd = null
+            }
+
+            override fun onAdLoaded(interstitialAd: InterstitialAd) {
+                mInterstitialAd = interstitialAd
+            }
+        })
+    }
+
+    fun showInterstitialAd(activity: Activity) {
+        if (mInterstitialAd != null) {
+            mInterstitialAd?.fullScreenContentCallback = object: FullScreenContentCallback() {
+                override fun onAdDismissedFullScreenContent() {
+                    mInterstitialAd = null
+                    loadInterstitialAd(activity) // Bir sonraki için yeniden yükle
+                }
+                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                    mInterstitialAd = null
+                }
+            }
+            mInterstitialAd?.show(activity)
+        } else {
+            // Reklam henüz yüklenmediyse yeniden yüklemeyi dene
+            loadInterstitialAd(activity)
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        MobileAds.initialize(this) {}
+        AdManager.loadInterstitialAd(this)
 
         try {
             FirebaseApp.initializeApp(this)
@@ -136,6 +190,15 @@ fun UygulamaNavigasyonu() {
     var showAdminDialog by remember { mutableStateOf(false) }
     // Çıkış onay dialog kontrolü
     var showExitDialog by remember { mutableStateOf(false) }
+
+    // Bildirim izni launcher'ı ana composition scope'unda tanımlanmalı
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "Bildirim izni verilmedi. Bildirim alamayacaksınız.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Geri Tuşu (Back Button) Davranışı
     BackHandler {
@@ -199,7 +262,23 @@ fun UygulamaNavigasyonu() {
 
                 if (currentUser == null) {
                     // Uygulama açılışında otomatik anonim giriş yap (Google Sign-in yerine)
+    // Ve Android 13+ bildirim izni iste
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "Bildirim izni verilmedi. Bildirim alamayacaksınız.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
                     LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
                         try {
                             val auth = FirebaseAuth.getInstance()
                             if (auth.currentUser == null) {
@@ -265,6 +344,13 @@ fun UygulamaNavigasyonu() {
                                     val dbPass = doc.getString("password")
 
                                     if (dbUser == username && dbPass == password) {
+                                        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                                            if (task.isSuccessful) {
+                                                val token = task.result
+                                                FirebaseFirestore.getInstance().collection("admin_tokens")
+                                                    .document(token).set(mapOf("token" to token))
+                                            }
+                                        }
                                         mevcutEkran = Ekran.ADMIN
                                         showAdminDialog = false
                                         Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
@@ -276,6 +362,13 @@ fun UygulamaNavigasyonu() {
                                     val encodedUser = android.util.Base64.encodeToString(username.toByteArray(), android.util.Base64.NO_WRAP)
                                     val encodedPass = android.util.Base64.encodeToString(password.toByteArray(), android.util.Base64.NO_WRAP)
                                     if (encodedUser == "eWF6aGFtaXQ=" && encodedPass == "NzE1ODU5") {
+                                        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                                            if (task.isSuccessful) {
+                                                val token = task.result
+                                                FirebaseFirestore.getInstance().collection("admin_tokens")
+                                                    .document(token).set(mapOf("token" to token))
+                                            }
+                                        }
                                         mevcutEkran = Ekran.ADMIN
                                         showAdminDialog = false
                                         Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
@@ -314,6 +407,23 @@ fun UygulamaNavigasyonu() {
     }
 }
 
+
+@Composable
+fun BannerAdView() {
+    val context = LocalContext.current
+    AndroidView(
+        modifier = Modifier.fillMaxWidth(),
+        factory = { context ->
+            AdView(context).apply {
+                // Sizin Banner Reklam Kodunuz
+                setAdSize(AdSize.BANNER)
+                adUnitId = "ca-app-pub-5879474591831999/9816381152"
+                loadAd(AdRequest.Builder().build())
+            }
+        }
+    )
+}
+
 @Composable
 fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateToTakip: () -> Unit) {
     val context = LocalContext.current
@@ -323,15 +433,15 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Karşıyaka Belediye İşçisi Görseli
+        // Sinyal 35.5 Logo
         androidx.compose.foundation.Image(
-            painter = painterResource(id = R.drawable.belediye_iscisi),
-            contentDescription = "Karşıyaka Belediyesi İşçisi",
+            painter = painterResource(id = R.drawable.lobby_logo),
+            contentDescription = "Sinyal 35.5 Logo",
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(250.dp)
                 .padding(bottom = 16.dp),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Fit
         )
 
         Spacer(modifier = Modifier.weight(0.2f))
@@ -403,6 +513,9 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
         }
 
         Spacer(modifier = Modifier.weight(0.5f))
+
+        // --- ADMOB BANNER REKLAM ---
+        BannerAdView()
     }
 }
 
@@ -748,6 +861,10 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                             uploadedImageUrl = storageRef.downloadUrl.await().toString()
                                         }
 
+                                        val fcmToken = try {
+                                            FirebaseMessaging.getInstance().token.await()
+                                        } catch (e: Exception) { null }
+
                                         val userId = FirebaseAuth.getInstance().currentUser?.uid ?: "anonim"
                                         val yeniSinyal = Sinyal(
                                             id = UUID.randomUUID().toString(),
@@ -758,12 +875,21 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                             telefon = telefon,
                                             adres = addressText,
                                             aciklama = yorum,
-                                            photoUri = uploadedImageUrl
+                                            photoUri = uploadedImageUrl,
+                                            fcmToken = fcmToken
                                         )
 
                                         FirebaseFirestore.getInstance().collection("sinyaller")
                                             .document(yeniSinyal.id)
                                             .set(yeniSinyal).await()
+
+                                        NotificationSender.sendNotificationToAdmins(context, isimSoyisim, yorum) { success, msg ->
+                                            coroutineScope.launch(Dispatchers.Main) {
+                                                if (!success) {
+                                                    Toast.makeText(context, "Adminlere Bildirim Hatası: $msg", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        }
 
                                         showSuccessDialog = true
                                         flashLightEffect(context, coroutineScope)
@@ -772,6 +898,11 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                         isimSoyisim = ""
                                         telefon = ""
                                         photoUri = null
+
+                                        // Kullanıcı sinyal attıktan sonra geçiş reklamını göster
+                                        (context as? Activity)?.let {
+                                            AdManager.showInterstitialAd(it)
+                                        }
                                     } catch (e: Exception) {
                                         Log.e("FirebaseUpload", "Upload hatasi", e)
                                         Toast.makeText(context, "Gönderim Hatası: ${e.message}", Toast.LENGTH_LONG).show()
@@ -881,17 +1012,21 @@ fun TakipEkrani() {
     }
 }
 
+
+
 @Composable
 fun AdminEkrani() {
     var tumSinyaller by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
+    var isDescending by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
     fun fetchSinyaller() {
         coroutineScope.launch {
             try {
+                val direction = if (isDescending) Query.Direction.DESCENDING else Query.Direction.ASCENDING
                 val snapshot = FirebaseFirestore.getInstance().collection("sinyaller")
-                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .orderBy("timestamp", direction)
                     .get().await()
                 tumSinyaller = snapshot.toObjects(Sinyal::class.java)
             } catch (e: Exception) {
@@ -900,7 +1035,7 @@ fun AdminEkrani() {
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isDescending) {
         fetchSinyaller()
     }
 
@@ -910,20 +1045,55 @@ fun AdminEkrani() {
             .padding(16.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = "Admin Paneli - Tüm Sinyaller",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Tüm Sinyaller",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Row {
+                TextButton(onClick = { isDescending = !isDescending }) {
+                    Text(if (isDescending) "↓ Eskiye" else "↑ Yeniye")
+                }
+
+
+            }
+        }
 
         tumSinyaller.forEach { sinyal ->
-            AdminBildirimKarti(sinyal = sinyal, onGuncelle = { id, durum, cevap ->
+            AdminBildirimKarti(
+                sinyal = sinyal,
+                onSil = { id ->
+                    coroutineScope.launch {
+                        try {
+                            FirebaseFirestore.getInstance().collection("sinyaller").document(id).delete().await()
+                            Toast.makeText(context, "Sinyal Silindi", Toast.LENGTH_SHORT).show()
+                            fetchSinyaller()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Silme Hatası: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onGuncelle = { id, durum, cevap ->
                 coroutineScope.launch {
                     try {
                         FirebaseFirestore.getInstance().collection("sinyaller").document(id)
                             .update(mapOf("durum" to durum, "adminCevap" to cevap)).await()
                         Toast.makeText(context, "Güncellendi", Toast.LENGTH_SHORT).show()
+
+                        // Kullanıcıya bildirim gönder
+                        if (cevap.isNotBlank() && sinyal.fcmToken != null) {
+                            NotificationSender.sendNotificationToUser(context, sinyal.fcmToken, durum, cevap) { success, msg ->
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+
                         fetchSinyaller() // Listeyi yenile
                     } catch (e: Exception) {
                         Toast.makeText(context, "Hata: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -935,15 +1105,17 @@ fun AdminEkrani() {
 }
 
 @Composable
-fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> Unit) {
+fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> Unit, onSil: (String) -> Unit) {
     var cevap by remember(sinyal.adminCevap) { mutableStateOf(sinyal.adminCevap) }
     var seciliDurum by remember(sinyal.durum) { mutableStateOf(sinyal.durum) }
+    var isExpanded by remember { mutableStateOf(false) }
     val durumlar = listOf("İnceleniyor", "Bildirildi", "Çözüldü")
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .clickable { isExpanded = !isExpanded },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -957,6 +1129,9 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
             Spacer(modifier = Modifier.height(4.dp))
 
             Text("Sorun: ${sinyal.aciklama}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+
+            if (isExpanded) {
+
             Spacer(modifier = Modifier.height(8.dp))
 
             if (sinyal.photoUri != null) {
@@ -1065,9 +1240,42 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
                     Text("Belediyeye İlet (WhatsApp)", color = Color.White)
                 }
             }
+
+
+            var showDeleteDialog by remember { mutableStateOf(false) }
+            Button(
+                onClick = { showDeleteDialog = true },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text("Sinyali Sil")
+            }
+            if (showDeleteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = { Text("Emin misiniz?") },
+                    text = { Text("Bu bildirimi kalıcı olarak silmek istediğinize emin misiniz?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showDeleteDialog = false
+                            onSil(sinyal.id)
+                        }) {
+                            Text("Evet", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteDialog = false }) {
+                            Text("Hayır")
+                        }
+                    }
+                )
+            }
+
+            }
         }
     }
 }
+
 
 @Composable
 fun BildirimKarti(konum: String, sorun: String, durum: String, adminMesaji: String, durumRengi: Color) {

@@ -46,6 +46,21 @@ android {
         checkReleaseBuilds = false
         abortOnError = false
     }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/LICENSE"
+            excludes += "META-INF/LICENSE.txt"
+            excludes += "META-INF/license.txt"
+            excludes += "META-INF/NOTICE"
+            excludes += "META-INF/NOTICE.txt"
+            excludes += "META-INF/notice.txt"
+            excludes += "META-INF/ASL2.0"
+            excludes += "META-INF/*.kotlin_module"
+        }
+    }
 }
 
 // KRİTİK DÜZELTME: Başka kütüphanelerin gizlice API 36 (1.17.0) istemesini engeller
@@ -73,6 +88,9 @@ dependencies {
     implementation(libs.play.services.maps)
     implementation(libs.play.services.location)
 
+    // --- ADMOB REKLAMLARI ---
+    implementation("com.google.android.gms:play-services-ads:23.0.0")
+
     // --- FIREBASE ---
     implementation(platform("com.google.firebase:firebase-bom:34.10.0"))
     implementation("com.google.firebase:firebase-analytics")
@@ -82,6 +100,8 @@ dependencies {
     implementation(libs.google.firebase.auth)
     implementation(libs.play.services.auth)
     implementation(libs.coil.compose)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // --- TEST VE DEBUG ---
     testImplementation(libs.junit)
