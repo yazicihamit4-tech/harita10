@@ -6,6 +6,16 @@ import android.content.Intent
 import android.os.Bundle
 import android.content.Context
 import android.hardware.camera2.CameraManager
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.gms.ads.LoadAdError
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.AdError
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -89,10 +99,49 @@ data class Sinyal(
     val fcmToken: String? = null
 )
 
+
+object AdManager {
+    var mInterstitialAd: InterstitialAd? = null
+
+    fun loadInterstitialAd(context: Context) {
+        val adRequest = AdRequest.Builder().build()
+        // Kullanıcının "Geçiş Reklam Kodu"
+        InterstitialAd.load(context, "ca-app-pub-5879474591831999/4703655274", adRequest, object : InterstitialAdLoadCallback() {
+            override fun onAdFailedToLoad(adError: LoadAdError) {
+                mInterstitialAd = null
+            }
+
+            override fun onAdLoaded(interstitialAd: InterstitialAd) {
+                mInterstitialAd = interstitialAd
+            }
+        })
+    }
+
+    fun showInterstitialAd(activity: Activity) {
+        if (mInterstitialAd != null) {
+            mInterstitialAd?.fullScreenContentCallback = object: FullScreenContentCallback() {
+                override fun onAdDismissedFullScreenContent() {
+                    mInterstitialAd = null
+                    loadInterstitialAd(activity) // Bir sonraki için yeniden yükle
+                }
+                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                    mInterstitialAd = null
+                }
+            }
+            mInterstitialAd?.show(activity)
+        } else {
+            // Reklam henüz yüklenmediyse yeniden yüklemeyi dene
+            loadInterstitialAd(activity)
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        MobileAds.initialize(this) {}
+        AdManager.loadInterstitialAd(this)
 
         try {
             FirebaseApp.initializeApp(this)
@@ -358,6 +407,23 @@ fun UygulamaNavigasyonu() {
     }
 }
 
+
+@Composable
+fun BannerAdView() {
+    val context = LocalContext.current
+    AndroidView(
+        modifier = Modifier.fillMaxWidth(),
+        factory = { context ->
+            AdView(context).apply {
+                // Sizin Banner Reklam Kodunuz
+                setAdSize(AdSize.BANNER)
+                adUnitId = "ca-app-pub-5879474591831999/9816381152"
+                loadAd(AdRequest.Builder().build())
+            }
+        }
+    )
+}
+
 @Composable
 fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateToTakip: () -> Unit) {
     val context = LocalContext.current
@@ -447,6 +513,9 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
         }
 
         Spacer(modifier = Modifier.weight(0.5f))
+
+        // --- ADMOB BANNER REKLAM ---
+        BannerAdView()
     }
 }
 
@@ -829,6 +898,11 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                         isimSoyisim = ""
                                         telefon = ""
                                         photoUri = null
+
+                                        // Kullanıcı sinyal attıktan sonra geçiş reklamını göster
+                                        (context as? Activity)?.let {
+                                            AdManager.showInterstitialAd(it)
+                                        }
                                     } catch (e: Exception) {
                                         Log.e("FirebaseUpload", "Upload hatasi", e)
                                         Toast.makeText(context, "Gönderim Hatası: ${e.message}", Toast.LENGTH_LONG).show()
