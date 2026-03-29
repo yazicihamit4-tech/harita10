@@ -1,57 +1,21 @@
 package com.yazhamit.izmirharita
 
 import android.content.Context
-import com.google.auth.oauth2.GoogleCredentials
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
 
-
-/**
- * =========================================================================================
- * ⚠️ DİKKAT (GÜVENLİK UYARISI):
- * Google Service Account (service_account.json) dosyasının uygulamanın içine (Android APK)
- * gömülmesi (Serverless FCM Yöntemi), Google tarafından ÖNERİLMEYEN ve güvensiz kabul edilen bir
- * mimaridir. Kötü niyetli kişiler APK dosyasını açıp (Decompile) bu JSON dosyasını
- * bulabilir ve Firebase projenize tam erişim (Admin) hakkı kazanabilir.
- * Kullanıcı "Sunucu/Backend kullanmak istemiyorum, direkt Android içinden gitsin"
- * talebinde bulunduğu için bu mimari kurulmuştur.
- * =========================================================================================
- */
 object NotificationSender {
 
-    private fun getProjectId(context: Context): String? {
-        return try {
-            val inputStream = context.resources.openRawResource(R.raw.service_account)
-            val jsonString = inputStream.bufferedReader().use { it.readText() }
-            val jsonObject = JSONObject(jsonString)
-            jsonObject.getString("project_id")
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    private fun getAccessToken(context: Context): String? {
-        return try {
-            val inputStream = context.resources.openRawResource(R.raw.service_account)
-            val credentials = GoogleCredentials.fromStream(inputStream)
-                .createScoped(listOf("https://www.googleapis.com/auth/firebase.messaging"))
-            credentials.refreshIfExpired()
-            credentials.accessToken.tokenValue
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
+    // Kendi Firebase Cloud Function URL'inizi buraya yazın. (Örnek URL aşağıdadır)
+    // Firebase Console -> Functions -> url kopyalayın
+    private const val NOTIFY_USER_FUNCTION_URL = "https://us-central1-izmirharita.cloudfunctions.net/notifyUser"
+    private const val NOTIFY_ADMIN_FUNCTION_URL = "https://us-central1-izmirharita.cloudfunctions.net/notifyAdmins"
 
     fun sendNotificationToUser(
         context: Context,
@@ -62,39 +26,17 @@ object NotificationSender {
     ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val accessToken = getAccessToken(context)
-                if (accessToken == null) {
-                    onResult(false, "Service Account dosyası bulunamadı veya geçersiz. (R.raw.service_account)")
-                    return@launch
-                }
-
-                val notificationBody = JSONObject().apply {
-                    put("title", "Sinyalinizin Durumu Güncellendi: $durum")
-                    put("body", "Yetkili Yanıtı: $cevap")
-                }
-
-                val message = JSONObject().apply {
+                val jsonObject = JSONObject().apply {
                     put("token", fcmToken)
-                    put("notification", notificationBody)
+                    put("durum", durum)
+                    put("cevap", cevap)
                 }
 
-                val root = JSONObject().apply {
-                    put("message", message)
-                }
-
-                val requestBody = root.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-
-                val projectId = getProjectId(context)
-                if (projectId == null) {
-                    onResult(false, "Service Account JSON dosyasında 'project_id' bulunamadı.")
-                    return@launch
-                }
-                val fcmApiUrl = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send"
+                val requestBody = jsonObject.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
                 val request = Request.Builder()
-                    .url(fcmApiUrl)
+                    .url(NOTIFY_USER_FUNCTION_URL)
                     .post(requestBody)
-                    .addHeader("Authorization", "Bearer $accessToken")
                     .addHeader("Content-Type", "application/json")
                     .build()
 
@@ -104,7 +46,7 @@ object NotificationSender {
                     if (response.isSuccessful) {
                         onResult(true, "Kullanıcıya bildirim başarıyla gönderildi.")
                     } else {
-                        onResult(false, "FCM Hatası (${response.code}): $responseBody")
+                        onResult(false, "Cloud Function Hatası (${response.code}): $responseBody")
                     }
                 }
             } catch (e: Exception) {
@@ -122,76 +64,31 @@ object NotificationSender {
     ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Admin tokenlarını Firestore'dan çekelim
-                val snapshot = FirebaseFirestore.getInstance().collection("admin_tokens").get().await()
-                val tokens = snapshot.documents.mapNotNull { it.getString("token") }
-
-                if (tokens.isEmpty()) {
-                    onResult(false, "Kayıtlı admin cihazı bulunamadı.")
-                    return@launch
+                val jsonObject = JSONObject().apply {
+                    put("isim", isim)
+                    put("mesaj", mesaj)
                 }
 
-                val accessToken = getAccessToken(context)
-                if (accessToken == null) {
-                    onResult(false, "Service Account dosyası bulunamadı veya geçersiz.")
-                    return@launch
-                }
+                val requestBody = jsonObject.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
-                val notificationBody = JSONObject().apply {
-                    put("title", "🚨 Yeni Sinyal Çakıldı")
-                    put("body", "$isim: $mesaj")
-                }
-
-                var successCount = 0
-                var failMessage = ""
+                val request = Request.Builder()
+                    .url(NOTIFY_ADMIN_FUNCTION_URL)
+                    .post(requestBody)
+                    .addHeader("Content-Type", "application/json")
+                    .build()
 
                 val client = OkHttpClient()
-
-                // v1 API doğrudan Multicast'i (tek istekte çok token) desteklemediği için token'lar üzerinde döngü kuruyoruz
-                // Daha verimli yöntem Topic kullanmaktır ancak token yapısını korumak için döngü ekliyoruz:
-                for (token in tokens) {
-                    val messageObj = JSONObject().apply {
-                        put("token", token)
-                        put("notification", notificationBody)
-                    }
-                    val root = JSONObject().apply {
-                        put("message", messageObj)
-                    }
-
-                    val requestBody = root.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-
-                    val projectId = getProjectId(context)
-                    if (projectId == null) {
-                        onResult(false, "Service Account JSON dosyasında 'project_id' bulunamadı.")
-                        return@launch
-                    }
-                    val fcmApiUrl = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send"
-
-                    val request = Request.Builder()
-                        .url(fcmApiUrl)
-                        .post(requestBody)
-                        .addHeader("Authorization", "Bearer $accessToken")
-                        .addHeader("Content-Type", "application/json")
-                        .build()
-
-                    client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            successCount++
-                        } else {
-                            failMessage = response.body?.string() ?: "Bilinmeyen FCM hatası"
-                        }
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string() ?: ""
+                    if (response.isSuccessful) {
+                        onResult(true, "Adminlere bildirim başarıyla gönderildi.")
+                    } else {
+                        onResult(false, "Cloud Function Hatası (${response.code}): $responseBody")
                     }
                 }
-
-                if (successCount > 0) {
-                    onResult(true, "$successCount Admine bildirim başarıyla gönderildi.")
-                } else {
-                    onResult(false, "Hiçbir admine bildirim gönderilemedi. Hata: $failMessage")
-                }
-
             } catch (e: Exception) {
                 e.printStackTrace()
-                onResult(false, "Bağlantı/Veritabanı Hatası: ${e.message}")
+                onResult(false, "Bağlantı Hatası: ${e.message}")
             }
         }
     }

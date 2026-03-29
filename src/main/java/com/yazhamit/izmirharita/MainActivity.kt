@@ -142,6 +142,15 @@ fun UygulamaNavigasyonu() {
     // Çıkış onay dialog kontrolü
     var showExitDialog by remember { mutableStateOf(false) }
 
+    // Bildirim izni launcher'ı ana composition scope'unda tanımlanmalı
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "Bildirim izni verilmedi. Bildirim alamayacaksınız.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Geri Tuşu (Back Button) Davranışı
     BackHandler {
         if (mevcutEkran != Ekran.LOBI) {
