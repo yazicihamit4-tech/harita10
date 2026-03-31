@@ -19,6 +19,17 @@ import com.google.android.gms.ads.LoadAdError
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.AdError
+import android.speech.RecognizerIntent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Mic
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import kotlin.math.sqrt
+import com.google.maps.android.compose.widgets.DisappearingScaleBar
+import com.google.maps.android.heatmaps.HeatmapTileProvider
+import com.google.maps.android.compose.MapEffect
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -174,10 +185,53 @@ enum class Ekran {
 @Composable
 fun UygulamaNavigasyonu() {
     var mevcutEkran by remember { mutableStateOf(Ekran.LOBI) }
+    var autoOpenSignalSheet by remember { mutableStateOf(false) }
     var currentUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
     val context = LocalContext.current
     val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
+
+    // Shake (Salla İhbar Et) Sensor Logic
+    val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    var lastShakeTime by remember { mutableStateOf(0L) }
+
+    DisposableEffect(Unit) {
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event != null) {
+                    val x = event.values[0]
+                    val y = event.values[1]
+                    val z = event.values[2]
+
+                    val gX = x / SensorManager.GRAVITY_EARTH
+                    val gY = y / SensorManager.GRAVITY_EARTH
+                    val gZ = z / SensorManager.GRAVITY_EARTH
+
+                    val gForce = sqrt(gX * gX + gY * gY + gZ * gZ)
+
+                    if (gForce > 2.7f) { // Shake eşiği (Threshold)
+                        val now = System.currentTimeMillis()
+                        // 2 saniyede bir tetiklenmesini sağla (Çift sallamayı önle)
+                        if (now - lastShakeTime > 2000) {
+                            lastShakeTime = now
+                            // Kullanıcı salladığında:
+                            mevcutEkran = Ekran.HARITA
+                            autoOpenSignalSheet = true
+                            Toast.makeText(context, "Sarsıntı Algılandı! İhbar Ekranı Açılıyor...", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
 
     // Admin giriş dialog kontrolü
     var showAdminDialog by remember { mutableStateOf(false) }
@@ -353,16 +407,7 @@ fun UygulamaNavigasyonu() {
                                         Toast.makeText(context, "Hatalı Kullanıcı Adı veya Şifre", Toast.LENGTH_SHORT).show()
                                     }
                                 } catch (e: Exception) {
-                                    // Eğer Firestore'da belge yoksa veya internet çekmiyorsa fallback olarak Base64 kontrolü (Kullanıcı İsteği)
-                                    val encodedUser = android.util.Base64.encodeToString(username.toByteArray(), android.util.Base64.NO_WRAP)
-                                    val encodedPass = android.util.Base64.encodeToString(password.toByteArray(), android.util.Base64.NO_WRAP)
-                                    if (encodedUser == "eWF6aGFtaXQ=" && encodedPass == "NzE1ODU5") {
-                                        mevcutEkran = Ekran.ADMIN
-                                        showAdminDialog = false
-                                        Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Bağlantı kurulamadı veya Hatalı Giriş", Toast.LENGTH_LONG).show()
-                                    }
+                                    Toast.makeText(context, "Bağlantı hatası veya yetkisiz giriş.", Toast.LENGTH_LONG).show()
                                 } finally {
                                     isLoggingIn = false
                                 }
@@ -387,7 +432,11 @@ fun UygulamaNavigasyonu() {
                     onNavigateToHarita = { mevcutEkran = Ekran.HARITA },
                     onNavigateToTakip = { mevcutEkran = Ekran.TAKIP }
                 )
-                Ekran.HARITA -> HaritaEkrani { mevcutEkran = Ekran.LOBI }
+                Ekran.HARITA -> HaritaEkrani(
+                    autoOpenSheet = autoOpenSignalSheet,
+                    onSheetOpened = { autoOpenSignalSheet = false },
+                    onComplete = { mevcutEkran = Ekran.LOBI }
+                )
                 Ekran.TAKIP -> TakipEkrani()
                 Ekran.ADMIN -> AdminEkrani()
             }
@@ -547,11 +596,37 @@ fun flashLightEffect(context: Context, coroutineScope: CoroutineScope) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HaritaEkrani(onComplete: () -> Unit) {
+fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {}, onComplete: () -> Unit) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
     var showSheet by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(autoOpenSheet) {
+        if (autoOpenSheet && hasLocationPermission) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
+                    if (location != null) {
+                        currentLocation = com.google.android.gms.maps.model.LatLng(location.latitude, location.longitude)
+                        addressText = "Adres tespit ediliyor..."
+                        isAddressResolved = false
+                        failedAddressRetries = 0
+                        resolveAddress(location.latitude, location.longitude) { address ->
+                            if (address != null) {
+                                addressText = address
+                                isAddressResolved = true
+                            } else {
+                                addressText = "Adres alınamadı."
+                                failedAddressRetries++
+                            }
+                        }
+                        showSheet = true
+                        onSheetOpened()
+                    }
+                }
+            } catch (e: SecurityException) { }
+        }
+    }
 
     // Anlık Konum
     var currentLocation by remember { mutableStateOf<LatLng?>(null) }
@@ -687,6 +762,7 @@ fun HaritaEkrani(onComplete: () -> Unit) {
     }
 
     val yelkenliIcon = remember { getBitmapDescriptorFromVector(context, R.drawable.ic_yelkenli_pin) }
+    var isHeatmapMode by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         GoogleMap(
@@ -698,14 +774,36 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                 minZoomPreference = 12f
             )
         ) {
-            haritaSinyalleri.forEach { sinyal ->
-                Marker(
-                    state = MarkerState(position = LatLng(sinyal.lat, sinyal.lng)),
-                    title = "Durum: ${sinyal.durum} | Adres: ${if(sinyal.adres.isNotBlank()) sinyal.adres else "Bilinmiyor"}",
-                    snippet = sinyal.aciklama,
-                    icon = yelkenliIcon
-                )
+            if (!isHeatmapMode) {
+                // Normal Pin Modu
+                haritaSinyalleri.forEach { sinyal ->
+                    Marker(
+                        state = MarkerState(position = LatLng(sinyal.lat, sinyal.lng)),
+                        title = "Durum: ${sinyal.durum} | Adres: ${if(sinyal.adres.isNotBlank()) sinyal.adres else "Bilinmiyor"}",
+                        snippet = sinyal.aciklama,
+                        icon = yelkenliIcon
+                    )
+                }
+            } else if (haritaSinyalleri.isNotEmpty()) {
+                // Şehir Isı (Risk) Haritası Modu
+                val latLngs = haritaSinyalleri.map { LatLng(it.lat, it.lng) }
+                val provider = HeatmapTileProvider.Builder()
+                    .data(latLngs)
+                    .radius(40) // Çukurların/Sorunların parladığı yarıçap
+                    .opacity(0.8)
+                    .build()
+                TileOverlay(tileProvider = provider)
             }
+        }
+
+        // Heatmap Toggle Butonu (Sağ Üstte)
+        FloatingActionButton(
+            onClick = { isHeatmapMode = !isHeatmapMode },
+            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).padding(top = 48.dp), // AppBar'ın altına gelmesi için margin
+            containerColor = if (isHeatmapMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+            contentColor = Color.White
+        ) {
+            Icon(Icons.Filled.Warning, contentDescription = "Isı Haritası")
         }
 
         Button(
@@ -816,13 +914,46 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                         }
                     }
 
-                    OutlinedTextField(
-                        value = yorum,
-                        onValueChange = { yorum = it },
-                        label = { Text("Lütfen sorunu tam, açık, anlaşılır ve nazik bir dille yazın (En az 20 karakter)*") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 4
-                    )
+                    // Sesli İhbar Asistanı (Voice to Text)
+                    val speechLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.StartActivityForResult()
+                    ) { result ->
+                        if (result.resultCode == Activity.RESULT_OK) {
+                            val data = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                            if (!data.isNullOrEmpty()) {
+                                yorum += " " + data[0] // Mevcut yorumun sonuna sesi yazıya çevirip ekle
+                            }
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = yorum,
+                            onValueChange = { yorum = it },
+                            label = { Text("Sesi Yazıya Çevir veya Elle Yaz") },
+                            modifier = Modifier.weight(1f),
+                            minLines = 3
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        FloatingActionButton(
+                            onClick = {
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR") // Türkçe dikte
+                                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Sorunu anlatın... (Örn: Boru patladı)")
+                                }
+                                try {
+                                    speechLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Cihazınızda sesli yazma desteklenmiyor.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = Color.White
+                        ) {
+                            Icon(Icons.Filled.Mic, contentDescription = "Sesli İhbar")
+                        }
+                    }
 
                     var isSubmitting by remember { mutableStateOf(false) }
                     Button(
@@ -1223,7 +1354,78 @@ fun AdminBildirimKarti(
                             onGuncelle(sinyal.id, seciliDurum, cevap, cozumFotoUri)
                         },
                         enabled = !isUpdating
-                    ) { Text(if (isUpdating) "..." else "Durumu Güncelle") }
+                    ) { Text(if (isUpdating) "..." else "Güncelle") }
+
+                    val context = LocalContext.current
+                    val coroutineScope = rememberCoroutineScope()
+                    var isSending by remember { mutableStateOf(false) }
+
+                    Button(
+                        onClick = {
+                            isSending = true
+                            coroutineScope.launch {
+                                try {
+                                    val adSoyad = sinyal.isimSoyisim.takeIf { it.isNotBlank() } ?: "Bilinmiyor"
+                                    val tel = sinyal.telefon.takeIf { it.isNotBlank() } ?: "Bilinmiyor"
+                                    val adres = if (sinyal.adres.isNotBlank()) sinyal.adres else "${sinyal.lat}, ${sinyal.lng}"
+
+                                    val mesaj = "🚨 *YENİ İHBAR* 🚨\n\n" +
+                                            "👤 *Bildiren:* $adSoyad\n" +
+                                            "📞 *Telefon:* $tel\n" +
+                                            "📍 *Adres:* $adres\n" +
+                                            "📝 *Açıklama:* ${sinyal.aciklama}"
+
+                                    val intent = Intent(Intent.ACTION_SEND)
+                                    intent.type = "text/plain"
+                                    intent.putExtra(Intent.EXTRA_TEXT, mesaj)
+                                    intent.putExtra("jid", "905301251355@s.whatsapp.net")
+                                    intent.setPackage("com.whatsapp")
+
+                                    if (sinyal.photoUri != null) {
+                                        val uri = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                                            try {
+                                                val url = java.net.URL(sinyal.photoUri)
+                                                val connection = url.openConnection()
+                                                connection.connect()
+                                                val input = connection.getInputStream()
+                                                val file = java.io.File(context.cacheDir, "shared_image_${System.currentTimeMillis()}.jpg")
+                                                val output = java.io.FileOutputStream(file)
+                                                input.copyTo(output)
+                                                output.close()
+                                                input.close()
+                                                androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                                            } catch (e: Exception) {
+                                                null
+                                            }
+                                        }
+
+                                        if (uri != null) {
+                                            intent.type = "image/*"
+                                            intent.putExtra(Intent.EXTRA_STREAM, uri)
+                                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                    }
+
+                                    context.startActivity(intent)
+                                } catch (e: android.content.ActivityNotFoundException) {
+                                    Toast.makeText(context, "WhatsApp cihazda yüklü değil.", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gönderim sırasında hata oluştu.", Toast.LENGTH_SHORT).show()
+                                    e.printStackTrace()
+                                } finally {
+                                    isSending = false
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)), // WhatsApp Yeşili
+                        enabled = !isSending
+                    ) {
+                        if (isSending) {
+                             CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                             Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text("Belediyeye İlet", color = Color.White)
+                    }
                 }
 
                 var showDeleteDialog by remember { mutableStateOf(false) }

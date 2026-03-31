@@ -88,6 +88,10 @@ dependencies {
     implementation(libs.play.services.maps)
     implementation(libs.play.services.location)
 
+    // --- ISI HARİTASI (HEATMAP) ---
+    implementation("com.google.maps.android:android-maps-utils:3.8.0")
+    implementation("com.google.maps.android:maps-compose-utils:4.3.0")
+
     // --- ADMOB REKLAMLARI ---
     implementation("com.google.android.gms:play-services-ads:23.0.0")
 
