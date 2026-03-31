@@ -20,23 +20,20 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.AdError
 import android.speech.RecognizerIntent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.filled.Mic
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import kotlin.math.sqrt
-import com.google.maps.android.compose.widgets.DisappearingScaleBar
 import com.google.maps.android.heatmaps.HeatmapTileProvider
 import com.google.maps.android.compose.MapEffect
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -46,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
@@ -602,31 +600,6 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
     var showSheet by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(autoOpenSheet) {
-        if (autoOpenSheet && hasLocationPermission) {
-            try {
-                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
-                    if (location != null) {
-                        currentLocation = com.google.android.gms.maps.model.LatLng(location.latitude, location.longitude)
-                        addressText = "Adres tespit ediliyor..."
-                        isAddressResolved = false
-                        failedAddressRetries = 0
-                        resolveAddress(location.latitude, location.longitude) { address ->
-                            if (address != null) {
-                                addressText = address
-                                isAddressResolved = true
-                            } else {
-                                addressText = "Adres alınamadı."
-                                failedAddressRetries++
-                            }
-                        }
-                        showSheet = true
-                        onSheetOpened()
-                    }
-                }
-            } catch (e: SecurityException) { }
-        }
-    }
 
     // Anlık Konum
     var currentLocation by remember { mutableStateOf<LatLng?>(null) }
@@ -758,6 +731,34 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+
+    // --- SALLAYARAK İHBAR EKRANINI OTOMATİK AÇ ---
+    LaunchedEffect(autoOpenSheet) {
+        if (autoOpenSheet && hasLocationPermission) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
+                    if (location != null) {
+                        currentLocation = com.google.android.gms.maps.model.LatLng(location.latitude, location.longitude)
+                        addressText = "Adres tespit ediliyor..."
+                        isAddressResolved = false
+                        failedAddressRetries = 0
+                        resolveAddress(location.latitude, location.longitude) { address ->
+                            if (address != null) {
+                                addressText = address
+                                isAddressResolved = true
+                            } else {
+                                addressText = "Adres alınamadı."
+                                failedAddressRetries++
+                            }
+                        }
+                        showSheet = true
+                        onSheetOpened()
+                    }
+                }
+            } catch (e: SecurityException) { }
         }
     }
 
@@ -951,7 +952,7 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = Color.White
                         ) {
-                            Icon(Icons.Filled.Mic, contentDescription = "Sesli İhbar")
+                            Icon(Icons.Filled.PlayArrow, contentDescription = "Sesli İhbar")
                         }
                     }
 
