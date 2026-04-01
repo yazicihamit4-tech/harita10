@@ -12,8 +12,8 @@ import org.json.JSONObject
 
 object NotificationSender {
 
-    // Kendi Firebase Cloud Function URL'inizi buraya yazın. (Örnek URL aşağıdadır)
-    // Firebase Console -> Functions -> url kopyalayın
+    // Firebase Cloud Functions HTTP Tetikleyici (Trigger) URL'leriniz
+    // firebase deploy --only functions yazdığınızda ekrana çıkan kendi "us-central1" ile başlayan linklerinizi buraya yazın.
     private const val NOTIFY_USER_FUNCTION_URL = "https://us-central1-izmirharita.cloudfunctions.net/notifyUser"
     private const val NOTIFY_ADMIN_FUNCTION_URL = "https://us-central1-izmirharita.cloudfunctions.net/notifyAdmins"
 
@@ -44,9 +44,18 @@ object NotificationSender {
                 client.newCall(request).execute().use { response ->
                     val responseBody = response.body?.string() ?: ""
                     if (response.isSuccessful) {
-                        onResult(true, "Kullanıcıya bildirim başarıyla gönderildi.")
+                        try {
+                            val jsonRes = JSONObject(responseBody)
+                            if (jsonRes.optBoolean("success", true)) {
+                                onResult(true, "Kullanıcıya bildirim başarıyla gönderildi.")
+                            } else {
+                                onResult(false, "Firebase Functions Hatası: ${jsonRes.optString("error", "Bilinmeyen Hata")}")
+                            }
+                        } catch (e: Exception) {
+                            onResult(true, "Kullanıcıya bildirim gönderildi.")
+                        }
                     } else {
-                        onResult(false, "Cloud Function Hatası (${response.code}): $responseBody")
+                        onResult(false, "Sunucu Hatası (${response.code}): $responseBody")
                     }
                 }
             } catch (e: Exception) {
@@ -81,9 +90,18 @@ object NotificationSender {
                 client.newCall(request).execute().use { response ->
                     val responseBody = response.body?.string() ?: ""
                     if (response.isSuccessful) {
-                        onResult(true, "Adminlere bildirim başarıyla gönderildi.")
+                        try {
+                            val jsonRes = JSONObject(responseBody)
+                            if (jsonRes.optBoolean("success", true)) {
+                                onResult(true, "Adminlere bildirim başarıyla gönderildi.")
+                            } else {
+                                onResult(false, "Firebase Functions Hatası: ${jsonRes.optString("error", "Bilinmeyen Hata")}")
+                            }
+                        } catch (e: Exception) {
+                            onResult(true, "Adminlere bildirim gönderildi.")
+                        }
                     } else {
-                        onResult(false, "Cloud Function Hatası (${response.code}): $responseBody")
+                        onResult(false, "Sunucu Hatası (${response.code}): $responseBody")
                     }
                 }
             } catch (e: Exception) {
