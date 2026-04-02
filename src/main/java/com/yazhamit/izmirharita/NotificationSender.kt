@@ -14,8 +14,8 @@ object NotificationSender {
 
     // Firebase Cloud Functions HTTP Tetikleyici (Trigger) URL'leriniz
     // firebase deploy --only functions yazdığınızda ekrana çıkan kendi "us-central1" ile başlayan linklerinizi buraya yazın.
-    private const val NOTIFY_USER_FUNCTION_URL = "https://us-central1-izmirharita.cloudfunctions.net/notifyUser"
-    private const val NOTIFY_ADMIN_FUNCTION_URL = "https://us-central1-izmirharita.cloudfunctions.net/notifyAdmins"
+    private const val NOTIFY_USER_FUNCTION_URL = "https://us-central1-izmirharita-d0d08.cloudfunctions.net/notifyUser"
+    private const val NOTIFY_ADMIN_FUNCTION_URL = "https://us-central1-izmirharita-d0d08.cloudfunctions.net/notifyAdmins"
 
     fun sendNotificationToUser(
         context: Context,
