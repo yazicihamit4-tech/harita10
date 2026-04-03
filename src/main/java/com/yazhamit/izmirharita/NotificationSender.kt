@@ -16,6 +16,53 @@ object NotificationSender {
     // firebase deploy --only functions yazdığınızda ekrana çıkan kendi "us-central1" ile başlayan linklerinizi buraya yazın.
     private const val NOTIFY_USER_FUNCTION_URL = "https://us-central1-izmirharita-d0d08.cloudfunctions.net/notifyUser"
     private const val NOTIFY_ADMIN_FUNCTION_URL = "https://us-central1-izmirharita-d0d08.cloudfunctions.net/notifyAdmins"
+    private const val BROADCAST_FUNCTION_URL = "https://us-central1-izmirharita-d0d08.cloudfunctions.net/broadcastNotification"
+
+    fun sendBroadcastNotification(
+        context: Context,
+        title: String,
+        body: String,
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val jsonObject = JSONObject().apply {
+                    put("title", title)
+                    put("body", body)
+                }
+
+                val requestBody = jsonObject.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+
+                val request = Request.Builder()
+                    .url(BROADCAST_FUNCTION_URL)
+                    .post(requestBody)
+                    .addHeader("Content-Type", "application/json")
+                    .build()
+
+                val client = OkHttpClient()
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string() ?: ""
+                    if (response.isSuccessful) {
+                        try {
+                            val jsonRes = JSONObject(responseBody)
+                            if (jsonRes.optBoolean("success", true)) {
+                                onResult(true, "Tüm kullanıcılara duyuru gönderildi.")
+                            } else {
+                                onResult(false, "Firebase Functions Hatası: ${jsonRes.optString("error", "Bilinmeyen Hata")}")
+                            }
+                        } catch (e: Exception) {
+                            onResult(true, "Tüm kullanıcılara duyuru gönderildi.")
+                        }
+                    } else {
+                        onResult(false, "Sunucu Hatası (${response.code}): $responseBody")
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(false, "Bağlantı Hatası: ${e.message}")
+            }
+        }
+    }
 
     fun sendNotificationToUser(
         context: Context,

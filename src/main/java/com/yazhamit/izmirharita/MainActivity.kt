@@ -147,6 +147,8 @@ class MainActivity : ComponentActivity() {
 
         try {
             FirebaseApp.initializeApp(this)
+            // Abone ol (Tüm kullanıcılara toplu duyuru gönderebilmek için)
+            FirebaseMessaging.getInstance().subscribeToTopic("all_users")
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -1217,6 +1219,66 @@ fun AdminEkrani() {
             )
             TextButton(onClick = { isDescending = !isDescending }) {
                 Text(if (isDescending) "↓ Eskiye" else "↑ Yeniye")
+            }
+        }
+
+        // Broadcast Notification UI
+        var broadcastTitle by remember { mutableStateOf("") }
+        var broadcastBody by remember { mutableStateOf("") }
+        var isBroadcasting by remember { mutableStateOf(false) }
+
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Tüm Kullanıcılara Bildirim Gönder (Duyuru)",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                OutlinedTextField(
+                    value = broadcastTitle,
+                    onValueChange = { broadcastTitle = it },
+                    label = { Text("Bildirim Başlığı") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = broadcastBody,
+                    onValueChange = { broadcastBody = it },
+                    label = { Text("Bildirim İçeriği") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        if (broadcastTitle.isNotBlank() && broadcastBody.isNotBlank()) {
+                            isBroadcasting = true
+                            NotificationSender.sendBroadcastNotification(context, broadcastTitle, broadcastBody) { success, msg ->
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    isBroadcasting = false
+                                    if (success) {
+                                        Toast.makeText(context, "Duyuru gönderildi!", Toast.LENGTH_SHORT).show()
+                                        broadcastTitle = ""
+                                        broadcastBody = ""
+                                    } else {
+                                        Toast.makeText(context, "Gönderim Hatası: $msg", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        } else {
+                            Toast.makeText(context, "Lütfen başlık ve içerik girin.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = !isBroadcasting,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(if (isBroadcasting) "Gönderiliyor..." else "Duyuru Gönder")
+                }
             }
         }
 
