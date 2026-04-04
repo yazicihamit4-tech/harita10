@@ -6,6 +6,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.net.Uri
+import android.media.AudioAttributes
+import android.content.ContentResolver
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -24,8 +27,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        // Token yenilendiğinde burası tetiklenir, ancak biz ihtiyacımız olan yerlerde (Girişte ve Sinyal atarken)
-        // manuel olarak token alıp Firebase'e kaydettiğimiz için buraya şimdilik ekstra bir kod yazmıyoruz.
     }
 
     private fun showNotification(title: String, message: String) {
@@ -38,25 +39,39 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val channelId = "sinyal_35_5_channel"
+        // Custom Sound URI setup
+        // It expects a file named 'custom_sound.mp3' in res/raw/
+        val soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + R.raw.custom_sound)
+
+        // Kanal ID'sini değiştiriyoruz, çünkü var olan bir kanalın özellikleri (sesi) sonradan değiştirilemez.
+        val channelId = "sinyal_35_5_premium_channel"
+
         val notificationBuilder = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // Gerekirse burayı kendi icon'unuz ile değiştirin (ör: R.mipmap.ic_launcher_round)
+            .setSmallIcon(R.drawable.ic_notification_signal) // Kendi özel ikonumuzu kullanıyoruz
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setSound(soundUri)
             .setContentIntent(pendingIntent)
 
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // Android 8.0 (Oreo) ve üzeri için Notification Channel zorunludur
+        // Android 8.0 (Oreo) ve üzeri için Notification Channel
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .build()
+
             val channel = NotificationChannel(
                 channelId,
                 "Sinyal 35.5 Bildirimleri",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Uygulama bildirimlerini gösterir"
+                setSound(soundUri, audioAttributes)
+                enableVibration(true)
             }
             notificationManager.createNotificationChannel(channel)
         }

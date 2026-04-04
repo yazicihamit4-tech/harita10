@@ -58,6 +58,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.Brush
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.location.Geocoder
@@ -154,19 +158,19 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            // Karşıyaka Teması Renkleri (Kırmızı ve Yeşil)
-            val KarsiyakaColorScheme = lightColorScheme(
-                primary = Color(0xFFD32F2F), // Kırmızı
+            // Modern & Premium Karşıyaka Teması
+            val PremiumKarsiyakaScheme = lightColorScheme(
+                primary = Color(0xFFE53935), // Daha Canlı Kırmızı
                 onPrimary = Color.White,
-                secondary = Color(0xFF388E3C), // Yeşil
+                secondary = Color(0xFF2E7D32), // Daha Canlı Yeşil
                 onSecondary = Color.White,
-                tertiary = Color(0xFF1B5E20), // Koyu Yeşil (Vurgular)
-                background = Color(0xFFFDF0F0), // Çok Açık Kırmızımsı Arkaplan
+                tertiary = Color(0xFFFDD835), // Sarı (Vurgu için)
+                background = Color(0xFFF5F7FA), // Soft modern gri/mavi arka plan
                 surface = Color.White,
-                onSurface = Color(0xFF212121)
+                onSurface = Color(0xFF1A1A1A)
             )
 
-            MaterialTheme(colorScheme = KarsiyakaColorScheme) {
+            MaterialTheme(colorScheme = PremiumKarsiyakaScheme) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     UygulamaNavigasyonu()
                 }
@@ -446,6 +450,69 @@ fun UygulamaNavigasyonu() {
 
 
 @Composable
+fun Premium3DButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    gradientColors: List<Color>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Basılma animasyonu (3D basılma hissi)
+    val scale by animateFloatAsState(if (isPressed) 0.95f else 1f)
+    val shadowElevation by animateFloatAsState(if (isPressed) 2f else 12f)
+
+    Button(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(80.dp)
+            .padding(horizontal = 8.dp)
+            .androidx.compose.ui.graphics.graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+        shape = RoundedCornerShape(24.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+        contentPadding = PaddingValues(0.dp),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = shadowElevation.dp,
+            pressedElevation = 2.dp
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.verticalGradient(colors = gradientColors),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                .padding(horizontal = 24.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp), tint = Color.White)
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = text,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    letterSpacing = 1.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun BannerAdView() {
     val context = LocalContext.current
     AndroidView(
@@ -469,84 +536,90 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Karşıyaka Belediye İşçisi Görseli
-        androidx.compose.foundation.Image(
-            painter = painterResource(id = R.drawable.lobby_logo),
-            contentDescription = "Karşıyaka Belediyesi İşçisi",
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .padding(bottom = 16.dp),
-            contentScale = ContentScale.Fit
-        )
+        // Üst 3D İkonlar (Martı / Saat Kulesi)
+        Row(
+            modifier = Modifier.fillMaxWidth().height(140.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Placeholder: Saat Kulesi 3D (Şu an lobby_logo kullanıyor, kendi 3D assetinizle değiştirebilirsiniz)
+            androidx.compose.foundation.Image(
+                painter = painterResource(id = R.drawable.lobby_logo),
+                contentDescription = "Saat Kulesi",
+                modifier = Modifier
+                    .weight(1f)
+                    .height(120.dp),
+                contentScale = ContentScale.Fit
+            )
 
-        Spacer(modifier = Modifier.weight(0.2f))
-        Text(
-            text = "SİNYAL 35.5",
-            style = MaterialTheme.typography.displayMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 2.sp
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = "Çözüme ortak oluyoruz, kentimizi birlikte güzelleştiriyoruz.",
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-            fontWeight = FontWeight.Medium
-        )
+            // Placeholder: Martı 3D (Gelecekteki eklenti için yer tutucu)
+            // Kendi martı ikonunuzu eklediğinizde R.drawable.marti_3d yapın
+            AsyncImage(
+                model = "https://cdn-icons-png.flaticon.com/512/3233/3233515.png", // Örnek Martı
+                contentDescription = "Martı",
+                modifier = Modifier
+                    .weight(1f)
+                    .height(100.dp)
+                    .padding(8.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Başlık ve Tipografi
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
+            shadowElevation = 8.dp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "SİNYAL 35.5",
+                    style = MaterialTheme.typography.displaySmall,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Çözüme ortak oluyoruz,\nkentimizi güzelleştiriyoruz.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.weight(1f))
 
-        Button(
+        Premium3DButton(
+            text = "SİNYAL ÇAK",
+            icon = Icons.Filled.Warning,
+            gradientColors = listOf(Color(0xFFFF5252), Color(0xFFD32F2F)),
             onClick = {
                 if (isLoggedIn) onNavigateToHarita()
                 else Toast.makeText(context, "Lütfen önce giriş yapın!", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White
-            ),
-            elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 10.dp,
-                pressedElevation = 2.dp
-            )
-        ) {
-            Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(28.dp))
-            Spacer(modifier = Modifier.width(12.dp))
-            Text("SİNYAL ÇAK", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-        }
+            }
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Button(
+        Premium3DButton(
+            text = "BİLDİRİMLERİMİ TAKİP ET",
+            icon = Icons.Filled.Build,
+            gradientColors = listOf(Color(0xFF4CAF50), Color(0xFF2E7D32)),
             onClick = {
                 if (isLoggedIn) onNavigateToTakip()
                 else Toast.makeText(context, "Lütfen önce giriş yapın!", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.secondary,
-                contentColor = Color.White
-            ),
-            elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 10.dp,
-                pressedElevation = 2.dp
-            )
-        ) {
-            Icon(Icons.Filled.Build, contentDescription = null, modifier = Modifier.size(28.dp))
-            Spacer(modifier = Modifier.width(12.dp))
-            Text("BİLDİRİMLERİMİ TAKİP ET", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
+            }
+        )
 
         Spacer(modifier = Modifier.weight(0.5f))
         BannerAdView()
