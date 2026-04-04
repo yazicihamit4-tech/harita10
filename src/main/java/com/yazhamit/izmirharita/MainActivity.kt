@@ -62,6 +62,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.location.Geocoder
@@ -471,7 +472,7 @@ fun Premium3DButton(
             .fillMaxWidth()
             .height(80.dp)
             .padding(horizontal = 8.dp)
-            .androidx.compose.ui.graphics.graphicsLayer {
+            .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             },
