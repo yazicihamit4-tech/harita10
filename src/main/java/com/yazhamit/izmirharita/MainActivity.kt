@@ -537,9 +537,20 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Üst 3D İkonlar (Karşıyaka Amblemi / Martı)
+        // Orijinal Uygulama Amblemi
+        androidx.compose.foundation.Image(
+            painter = painterResource(id = R.drawable.lobby_logo),
+            contentDescription = "Uygulama Amblemi",
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .padding(bottom = 8.dp),
+            contentScale = ContentScale.Fit
+        )
+
+        // Yan Yana İkonlar (Karşıyaka Amblemi / Martı)
         Row(
-            modifier = Modifier.fillMaxWidth().height(140.dp),
+            modifier = Modifier.fillMaxWidth().height(100.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -549,7 +560,7 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
                 contentDescription = "Karşıyaka Amblemi",
                 modifier = Modifier
                     .weight(1f)
-                    .height(110.dp)
+                    .height(80.dp)
                     .padding(8.dp),
                 contentScale = ContentScale.Fit
             )
@@ -560,7 +571,7 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
                 contentDescription = "Martı",
                 modifier = Modifier
                     .weight(1f)
-                    .height(110.dp)
+                    .height(80.dp)
                     .padding(8.dp),
                 contentScale = ContentScale.Fit
             )
