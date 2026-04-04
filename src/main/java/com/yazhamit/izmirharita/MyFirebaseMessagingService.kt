@@ -40,7 +40,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         )
 
         // Custom Sound URI setup
-        // It expects a file named 'custom_sound.mp3' in res/raw/
         val soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/" + R.raw.custom_sound)
 
         // Kanal ID'sini değiştiriyoruz, çünkü var olan bir kanalın özellikleri (sesi) sonradan değiştirilemez.
