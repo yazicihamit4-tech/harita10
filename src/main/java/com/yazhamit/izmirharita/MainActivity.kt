@@ -537,30 +537,30 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Üst 3D İkonlar (Martı / Saat Kulesi)
+        // Üst 3D İkonlar (Karşıyaka Amblemi / Martı)
         Row(
             modifier = Modifier.fillMaxWidth().height(140.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Placeholder: Saat Kulesi 3D (Şu an lobby_logo kullanıyor, kendi 3D assetinizle değiştirebilirsiniz)
-            androidx.compose.foundation.Image(
-                painter = painterResource(id = R.drawable.lobby_logo),
-                contentDescription = "Saat Kulesi",
+            // Karşıyaka Belediyesi Amblemi
+            AsyncImage(
+                model = "https://upload.wikimedia.org/wikipedia/tr/b/bc/Karsiyaka_Belediyesi_logo.png",
+                contentDescription = "Karşıyaka Amblemi",
                 modifier = Modifier
                     .weight(1f)
-                    .height(120.dp),
+                    .height(110.dp)
+                    .padding(8.dp),
                 contentScale = ContentScale.Fit
             )
 
-            // Placeholder: Martı 3D (Gelecekteki eklenti için yer tutucu)
-            // Kendi martı ikonunuzu eklediğinizde R.drawable.marti_3d yapın
+            // 3D Martı İkonu
             AsyncImage(
-                model = "https://cdn-icons-png.flaticon.com/512/3233/3233515.png", // Örnek Martı
+                model = "https://cdn-icons-png.flaticon.com/512/3233/3233515.png",
                 contentDescription = "Martı",
                 modifier = Modifier
                     .weight(1f)
-                    .height(100.dp)
+                    .height(110.dp)
                     .padding(8.dp),
                 contentScale = ContentScale.Fit
             )
