@@ -549,36 +549,16 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Yan Yana İkonlar (Karşıyaka Amblemi / Martı)
-        Row(
-            modifier = Modifier.fillMaxWidth().height(140.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Karşıyaka Belediyesi Amblemi
-            AsyncImage(
-                model = "https://upload.wikimedia.org/wikipedia/tr/b/bc/Karsiyaka_Belediyesi_logo.png",
-                contentDescription = "Karşıyaka Amblemi",
-                modifier = Modifier
-                    .weight(1f)
-                    .height(110.dp)
-                    .padding(8.dp),
-                contentScale = ContentScale.Fit
-            )
-
-            // 3D Martı İkonu
-            AsyncImage(
-                model = "https://cdn-icons-png.flaticon.com/512/3233/3233515.png",
-                contentDescription = "Martı",
-                modifier = Modifier
-                    .weight(1f)
-                    .height(110.dp)
-                    .padding(8.dp),
-                contentScale = ContentScale.Fit
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
+        // Orijinal Sinyal 35.5 Uygulama Amblemi
+        androidx.compose.foundation.Image(
+            painter = painterResource(id = R.drawable.lobby_logo),
+            contentDescription = "Sinyal 35.5 Amblemi",
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .padding(bottom = 16.dp),
+            contentScale = ContentScale.Fit
+        )
 
         // Başlık ve Tipografi
         Surface(
