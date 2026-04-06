@@ -408,6 +408,18 @@ fun UygulamaNavigasyonu() {
                                         mevcutEkran = Ekran.ADMIN
                                         showAdminDialog = false
                                         Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
+
+                                        // Admin giriş yaptığında FCM Token'ını kaydet (Bildirim alabilmesi için)
+                                        try {
+                                            val token = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
+                                            FirebaseFirestore.getInstance()
+                                                .collection("admin_tokens")
+                                                .document(token) // Token'ı ID olarak kullanıp mükerrer kaydı önleriz
+                                                .set(mapOf("token" to token, "timestamp" to System.currentTimeMillis()))
+                                                .await()
+                                        } catch (e: Exception) {
+                                            Log.e("AdminLogin", "Token kaydedilemedi", e)
+                                        }
                                     } else {
                                         Toast.makeText(context, "Hatalı Kullanıcı Adı veya Şifre", Toast.LENGTH_SHORT).show()
                                     }
@@ -537,20 +549,9 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Orijinal Uygulama Amblemi
-        androidx.compose.foundation.Image(
-            painter = painterResource(id = R.drawable.lobby_logo),
-            contentDescription = "Uygulama Amblemi",
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .padding(bottom = 8.dp),
-            contentScale = ContentScale.Fit
-        )
-
         // Yan Yana İkonlar (Karşıyaka Amblemi / Martı)
         Row(
-            modifier = Modifier.fillMaxWidth().height(100.dp),
+            modifier = Modifier.fillMaxWidth().height(140.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -560,7 +561,7 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
                 contentDescription = "Karşıyaka Amblemi",
                 modifier = Modifier
                     .weight(1f)
-                    .height(80.dp)
+                    .height(110.dp)
                     .padding(8.dp),
                 contentScale = ContentScale.Fit
             )
@@ -571,7 +572,7 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
                 contentDescription = "Martı",
                 modifier = Modifier
                     .weight(1f)
-                    .height(80.dp)
+                    .height(110.dp)
                     .padding(8.dp),
                 contentScale = ContentScale.Fit
             )
