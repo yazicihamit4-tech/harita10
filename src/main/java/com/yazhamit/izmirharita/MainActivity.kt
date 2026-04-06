@@ -610,6 +610,26 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Google Play Sorumluluk Reddi Beyanı (Zorunlu)
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)), // Açık sarı dikkat çekici arka plan
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Warning, contentDescription = "Uyarı", tint = Color(0xFFF57F17), modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Önemli Uyarı: Bu uygulama tamamen bağımsız ve sivil bir platformdur. Hiçbir devlet kurumu, belediye veya resmi makam ile bağlantısı yoktur veya onları temsil etmez. Sadece vatandaşların çevrelerindeki sorunları haritalandırması için geliştirilmiştir.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.DarkGray,
+                    textAlign = TextAlign.Justify
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.weight(1f))
 
         Premium3DButton(
