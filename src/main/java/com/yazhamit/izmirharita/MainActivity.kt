@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -543,12 +544,25 @@ fun BannerAdView() {
 @Composable
 fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateToTakip: () -> Unit) {
     val context = LocalContext.current
+    var showDisclaimerDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
+            IconButton(onClick = { showDisclaimerDialog = true }) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = "Bilgi / Sorumluluk Reddi",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
         // Orijinal Sinyal 35.5 Uygulama Amblemi
         androidx.compose.foundation.Image(
             painter = painterResource(id = R.drawable.lobby_logo),
@@ -590,27 +604,32 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Google Play Sorumluluk Reddi Beyanı (Zorunlu)
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)), // Açık sarı dikkat çekici arka plan
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Warning, contentDescription = "Uyarı", tint = Color(0xFFF57F17), modifier = Modifier.size(24.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Önemli Uyarı: Bu uygulama tamamen bağımsız ve sivil bir platformdur. Hiçbir devlet kurumu, belediye veya resmi makam ile bağlantısı yoktur veya onları temsil etmez. Sadece vatandaşların çevrelerindeki sorunları haritalandırması için geliştirilmiştir.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.DarkGray,
-                    textAlign = TextAlign.Justify
-                )
-            }
-        }
-
         Spacer(modifier = Modifier.weight(1f))
+
+        if (showDisclaimerDialog) {
+            AlertDialog(
+                onDismissRequest = { showDisclaimerDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Warning, contentDescription = "Uyarı", tint = Color(0xFFF57F17), modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Sorumluluk Reddi Beyanı", fontWeight = FontWeight.Bold)
+                    }
+                },
+                text = {
+                    Text(
+                        "Bu uygulama tamamen bağımsız ve sivil bir platformdur. Hiçbir devlet kurumu, belediye veya resmi makam ile bağlantısı yoktur veya onları temsil etmez. Sadece vatandaşların çevrelerindeki sorunları haritalandırması için geliştirilmiştir.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Justify
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDisclaimerDialog = false }) {
+                        Text("Anladım")
+                    }
+                }
+            )
+        }
 
         Premium3DButton(
             text = "SİNYAL ÇAK",
