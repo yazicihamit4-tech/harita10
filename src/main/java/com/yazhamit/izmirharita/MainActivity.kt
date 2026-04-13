@@ -190,10 +190,14 @@ enum class Ekran {
 
 @Composable
 fun UygulamaNavigasyonu() {
-    var mevcutEkran by remember { mutableStateOf(Ekran.LOBI) }
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences("Sinyal355Prefs", Context.MODE_PRIVATE)
+
+    var mevcutEkran by remember { mutableStateOf(if (prefs.getBoolean("isAdmin", false)) Ekran.ADMIN else Ekran.LOBI) }
+    var isAdminUser by remember { mutableStateOf(prefs.getBoolean("isAdmin", false)) }
     var autoOpenSignalSheet by remember { mutableStateOf(false) }
     var currentUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
-    val context = LocalContext.current
+
     val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
 
@@ -406,6 +410,8 @@ fun UygulamaNavigasyonu() {
                                     val dbPass = doc.getString("password")
 
                                     if (dbUser == username && dbPass == password) {
+                                        prefs.edit().putBoolean("isAdmin", true).apply()
+                                        isAdminUser = true
                                         mevcutEkran = Ekran.ADMIN
                                         showAdminDialog = false
                                         Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
@@ -447,8 +453,10 @@ fun UygulamaNavigasyonu() {
             when (mevcutEkran) {
                 Ekran.LOBI -> LobiEkrani(
                     isLoggedIn = currentUser != null,
+                    isAdmin = isAdminUser,
                     onNavigateToHarita = { mevcutEkran = Ekran.HARITA },
-                    onNavigateToTakip = { mevcutEkran = Ekran.TAKIP }
+                    onNavigateToTakip = { mevcutEkran = Ekran.TAKIP },
+                    onNavigateToAdmin = { mevcutEkran = Ekran.ADMIN }
                 )
                 Ekran.HARITA -> HaritaEkrani(
                     autoOpenSheet = autoOpenSignalSheet,
@@ -456,7 +464,14 @@ fun UygulamaNavigasyonu() {
                     onComplete = { mevcutEkran = Ekran.LOBI }
                 )
                 Ekran.TAKIP -> TakipEkrani()
-                Ekran.ADMIN -> AdminEkrani()
+                Ekran.ADMIN -> AdminEkrani(
+                    onLogout = {
+                        prefs.edit().putBoolean("isAdmin", false).apply()
+                        isAdminUser = false
+                        mevcutEkran = Ekran.LOBI
+                        Toast.makeText(context, "Admin çıkışı yapıldı.", Toast.LENGTH_SHORT).show()
+                    }
+                )
             }
         }
     }
@@ -541,10 +556,29 @@ fun BannerAdView() {
     )
 }
 
+data class Duyuru(
+    val title: String = "",
+    val body: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 @Composable
-fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateToTakip: () -> Unit) {
+fun LobiEkrani(isLoggedIn: Boolean, isAdmin: Boolean, onNavigateToHarita: () -> Unit, onNavigateToTakip: () -> Unit, onNavigateToAdmin: () -> Unit) {
     val context = LocalContext.current
     var showDisclaimerDialog by remember { mutableStateOf(false) }
+    var duyurular by remember { mutableStateOf<List<Duyuru>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        try {
+            val snapshot = FirebaseFirestore.getInstance().collection("duyurular")
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(3)
+                .get().await()
+            duyurular = snapshot.toObjects(Duyuru::class.java)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -604,7 +638,35 @@ fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateTo
             }
         }
 
+        // Duyurular Bölümü
+        if (duyurular.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Belediyeden Duyurular", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(bottom = 8.dp))
+                    duyurular.forEach { duyuru ->
+                        Text("• ${duyuru.title}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(duyuru.body, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.weight(1f))
+
+        if (isAdmin) {
+            Premium3DButton(
+                text = "ADMİN PANELİNE GİT",
+                icon = Icons.Filled.Warning, // Yada baska ikon
+                gradientColors = listOf(Color(0xFF8E24AA), Color(0xFF4A148C)), // Mor
+                onClick = onNavigateToAdmin
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         if (showDisclaimerDialog) {
             AlertDialog(
@@ -741,6 +803,10 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
         position = CameraPosition.fromLatLngZoom(karsiyakaMerkez, 13f)
     }
 
+    fun isLocationInKarsiyaka(lat: Double, lng: Double): Boolean {
+        return karsiyakaBounds.contains(LatLng(lat, lng))
+    }
+
     // Haritada Görünen Sinyaller
     var haritaSinyalleri by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
 
@@ -804,17 +870,20 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
                         isAddressResolved = false
                         failedAddressRetries = 0
 
-                        resolveAddress(location.latitude, location.longitude) { address ->
-                            if (address != null) {
-                                addressText = address
-                                isAddressResolved = true
-                            } else {
-                                addressText = "Adres alınamadı. (Hata: İnternet veya Servis)"
-                                failedAddressRetries++
+                        if (isLocationInKarsiyaka(location.latitude, location.longitude)) {
+                            resolveAddress(location.latitude, location.longitude) { address ->
+                                if (address != null) {
+                                    addressText = address
+                                    isAddressResolved = true
+                                } else {
+                                    addressText = "Adres alınamadı. (Hata: İnternet veya Servis)"
+                                    failedAddressRetries++
+                                }
                             }
+                            showSheet = true
+                        } else {
+                            Toast.makeText(context, "Hata: Sadece Karşıyaka ilçe sınırları içerisinden sinyal gönderebilirsiniz.", Toast.LENGTH_LONG).show()
                         }
-
-                        showSheet = true
                     } else {
                         Toast.makeText(context, "Konum alınamadı, lütfen GPS'i kontrol edin.", Toast.LENGTH_SHORT).show()
                     }
@@ -848,21 +917,26 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
             try {
                 fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
                     if (location != null) {
-                        currentLocation = com.google.android.gms.maps.model.LatLng(location.latitude, location.longitude)
-                        addressText = "Adres tespit ediliyor..."
-                        isAddressResolved = false
-                        failedAddressRetries = 0
-                        resolveAddress(location.latitude, location.longitude) { address ->
-                            if (address != null) {
-                                addressText = address
-                                isAddressResolved = true
-                            } else {
-                                addressText = "Adres alınamadı."
-                                failedAddressRetries++
+                        if (isLocationInKarsiyaka(location.latitude, location.longitude)) {
+                            currentLocation = com.google.android.gms.maps.model.LatLng(location.latitude, location.longitude)
+                            addressText = "Adres tespit ediliyor..."
+                            isAddressResolved = false
+                            failedAddressRetries = 0
+                            resolveAddress(location.latitude, location.longitude) { address ->
+                                if (address != null) {
+                                    addressText = address
+                                    isAddressResolved = true
+                                } else {
+                                    addressText = "Adres alınamadı."
+                                    failedAddressRetries++
+                                }
                             }
+                            showSheet = true
+                            onSheetOpened()
+                        } else {
+                            Toast.makeText(context, "Sadece Karşıyaka sınırları içerisinden ihbar yapabilirsiniz.", Toast.LENGTH_SHORT).show()
+                            onSheetOpened() // Reset trigger
                         }
-                        showSheet = true
-                        onSheetOpened()
                     }
                 }
             } catch (e: SecurityException) { }
@@ -1282,7 +1356,7 @@ fun TakipEkrani() {
 }
 
 @Composable
-fun AdminEkrani() {
+fun AdminEkrani(onLogout: () -> Unit) {
     var tumSinyaller by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
     var isDescending by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
@@ -1322,8 +1396,13 @@ fun AdminEkrani() {
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
-            TextButton(onClick = { isDescending = !isDescending }) {
-                Text(if (isDescending) "↓ Eskiye" else "↑ Yeniye")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { isDescending = !isDescending }) {
+                    Text(if (isDescending) "↓ Eskiye" else "↑ Yeniye")
+                }
+                TextButton(onClick = onLogout) {
+                    Text("Çıkış Yap", color = MaterialTheme.colorScheme.error)
+                }
             }
         }
 
@@ -1363,16 +1442,28 @@ fun AdminEkrani() {
                     onClick = {
                         if (broadcastTitle.isNotBlank() && broadcastBody.isNotBlank()) {
                             isBroadcasting = true
-                            NotificationSender.sendBroadcastNotification(context, broadcastTitle, broadcastBody) { success, msg ->
-                                coroutineScope.launch(Dispatchers.Main) {
-                                    isBroadcasting = false
-                                    if (success) {
-                                        Toast.makeText(context, "Duyuru gönderildi!", Toast.LENGTH_SHORT).show()
-                                        broadcastTitle = ""
-                                        broadcastBody = ""
-                                    } else {
-                                        Toast.makeText(context, "Gönderim Hatası: $msg", Toast.LENGTH_LONG).show()
+                            // Firestore'a kaydet (Lobide görünmesi için)
+                            coroutineScope.launch {
+                                try {
+                                    val yeniDuyuru = Duyuru(title = broadcastTitle, body = broadcastBody)
+                                    FirebaseFirestore.getInstance().collection("duyurular").add(yeniDuyuru).await()
+
+                                    // Bildirimi gönder
+                                    NotificationSender.sendBroadcastNotification(context, broadcastTitle, broadcastBody) { success, msg ->
+                                        coroutineScope.launch(Dispatchers.Main) {
+                                            isBroadcasting = false
+                                            if (success) {
+                                                Toast.makeText(context, "Duyuru gönderildi ve lobiye eklendi!", Toast.LENGTH_SHORT).show()
+                                                broadcastTitle = ""
+                                                broadcastBody = ""
+                                            } else {
+                                                Toast.makeText(context, "Bildirim Hatası: $msg", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
                                     }
+                                } catch (e: Exception) {
+                                    isBroadcasting = false
+                                    Toast.makeText(context, "Duyuru kaydedilemedi: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         } else {
