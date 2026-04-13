@@ -794,13 +794,14 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
     var photoUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
     val karsiyakaMerkez = LatLng(38.4552, 27.1235)
+    // Sıkı Karşıyaka Sınırları
     val karsiyakaBounds = LatLngBounds(
-        LatLng(38.4410, 27.0850), // Güney-Batı (Örn: Mavişehir ucu)
-        LatLng(38.4850, 27.1650)  // Kuzey-Doğu (Örn: Yamanlar tarafı)
+        LatLng(38.4350, 27.0700), // Güney-Batı ucu (biraz daraltılmış/kesinleştirilmiş)
+        LatLng(38.4900, 27.1650)  // Kuzey-Doğu ucu
     )
 
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(karsiyakaMerkez, 13f)
+        position = CameraPosition.fromLatLngZoom(karsiyakaMerkez, 14f) // Daha yakın başlat
     }
 
     fun isLocationInKarsiyaka(lat: Double, lng: Double): Boolean {
@@ -953,7 +954,8 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
             properties = MapProperties(
                 isMyLocationEnabled = hasLocationPermission,
                 latLngBoundsForCameraTarget = karsiyakaBounds,
-                minZoomPreference = 12f
+                minZoomPreference = 13.5f, // Kullanıcının çok fazla uzaklaşmasını engelle
+                maxZoomPreference = 20f
             )
         ) {
             if (!isHeatmapMode) {
