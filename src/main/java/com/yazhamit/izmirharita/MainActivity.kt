@@ -6,13 +6,34 @@ import android.content.Intent
 import android.os.Bundle
 import android.content.Context
 import android.hardware.camera2.CameraManager
+import androidx.compose.foundation.clickable
+import kotlinx.coroutines.tasks.await
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.gms.ads.LoadAdError
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.AdError
+import android.speech.RecognizerIntent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import kotlin.math.sqrt
+import com.google.maps.android.heatmaps.HeatmapTileProvider
+import com.google.maps.android.compose.MapEffect
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,8 +43,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +59,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.location.Geocoder
@@ -79,36 +107,72 @@ data class Sinyal(
     val adres: String = "",
     val aciklama: String = "",
     val photoUri: String? = null,
+    val afterPhotoUri: String? = null, // Çözüldü fotoğrafı (Sonrası)
+    val kategori: String = "Genel İhbar", // Akıllı Kategori
     val durum: String = "İnceleniyor", // İnceleniyor, Bildirildi, Çözüldü
     val adminCevap: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val fcmToken: String? = null,
+    val upvotes: Int = 0 // Sosyal Akış (Topluluk) upvote sayısı
 )
+
+
+object AdManager {
+    var mInterstitialAd: InterstitialAd? = null
+
+    fun loadInterstitialAd(context: Context) {
+        val adRequest = AdRequest.Builder().build()
+        InterstitialAd.load(context, "ca-app-pub-5879474591831999/4703655274", adRequest, object : InterstitialAdLoadCallback() {
+            override fun onAdFailedToLoad(adError: LoadAdError) { mInterstitialAd = null }
+            override fun onAdLoaded(interstitialAd: InterstitialAd) { mInterstitialAd = interstitialAd }
+        })
+    }
+
+    fun showInterstitialAd(activity: Activity) {
+        if (mInterstitialAd != null) {
+            mInterstitialAd?.fullScreenContentCallback = object: FullScreenContentCallback() {
+                override fun onAdDismissedFullScreenContent() {
+                    mInterstitialAd = null
+                    loadInterstitialAd(activity)
+                }
+                override fun onAdFailedToShowFullScreenContent(adError: AdError) { mInterstitialAd = null }
+            }
+            mInterstitialAd?.show(activity)
+        } else {
+            loadInterstitialAd(activity)
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        MobileAds.initialize(this) {}
+        AdManager.loadInterstitialAd(this)
 
         try {
             FirebaseApp.initializeApp(this)
+            // Abone ol (Tüm kullanıcılara toplu duyuru gönderebilmek için)
+            FirebaseMessaging.getInstance().subscribeToTopic("all_users")
         } catch (e: Exception) {
             e.printStackTrace()
         }
 
         setContent {
-            // Karşıyaka Teması Renkleri (Kırmızı ve Yeşil)
-            val KarsiyakaColorScheme = lightColorScheme(
-                primary = Color(0xFFD32F2F), // Kırmızı
+            // Modern & Premium Karşıyaka Teması
+            val PremiumKarsiyakaScheme = lightColorScheme(
+                primary = Color(0xFFE53935), // Daha Canlı Kırmızı
                 onPrimary = Color.White,
-                secondary = Color(0xFF388E3C), // Yeşil
+                secondary = Color(0xFF2E7D32), // Daha Canlı Yeşil
                 onSecondary = Color.White,
-                tertiary = Color(0xFF1B5E20), // Koyu Yeşil (Vurgular)
-                background = Color(0xFFFDF0F0), // Çok Açık Kırmızımsı Arkaplan
+                tertiary = Color(0xFFFDD835), // Sarı (Vurgu için)
+                background = Color(0xFFF5F7FA), // Soft modern gri/mavi arka plan
                 surface = Color.White,
-                onSurface = Color(0xFF212121)
+                onSurface = Color(0xFF1A1A1A)
             )
 
-            MaterialTheme(colorScheme = KarsiyakaColorScheme) {
+            MaterialTheme(colorScheme = PremiumKarsiyakaScheme) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     UygulamaNavigasyonu()
                 }
@@ -126,16 +190,81 @@ enum class Ekran {
 
 @Composable
 fun UygulamaNavigasyonu() {
-    var mevcutEkran by remember { mutableStateOf(Ekran.LOBI) }
-    var currentUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
     val context = LocalContext.current
+    val prefs = context.getSharedPreferences("Sinyal355Prefs", Context.MODE_PRIVATE)
+
+    var mevcutEkran by remember { mutableStateOf(if (prefs.getBoolean("isAdmin", false)) Ekran.ADMIN else Ekran.LOBI) }
+    var isAdminUser by remember { mutableStateOf(prefs.getBoolean("isAdmin", false)) }
+    var autoOpenSignalSheet by remember { mutableStateOf(false) }
+    var currentUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
+
     val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
+
+    // Shake (Salla İhbar Et) Sensor Logic
+    val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    var lastShakeTime by remember { mutableStateOf(0L) }
+
+    DisposableEffect(Unit) {
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event != null) {
+                    val x = event.values[0]
+                    val y = event.values[1]
+                    val z = event.values[2]
+
+                    val gX = x / SensorManager.GRAVITY_EARTH
+                    val gY = y / SensorManager.GRAVITY_EARTH
+                    val gZ = z / SensorManager.GRAVITY_EARTH
+
+                    val gForce = sqrt(gX * gX + gY * gY + gZ * gZ)
+
+                    if (gForce > 2.7f) { // Shake eşiği (Threshold)
+                        val now = System.currentTimeMillis()
+                        // 2 saniyede bir tetiklenmesini sağla (Çift sallamayı önle)
+                        if (now - lastShakeTime > 2000) {
+                            lastShakeTime = now
+                            // Kullanıcı salladığında:
+                            mevcutEkran = Ekran.HARITA
+                            autoOpenSignalSheet = true
+                            Toast.makeText(context, "Sarsıntı Algılandı! İhbar Ekranı Açılıyor...", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
 
     // Admin giriş dialog kontrolü
     var showAdminDialog by remember { mutableStateOf(false) }
     // Çıkış onay dialog kontrolü
     var showExitDialog by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "Bildirim izni verilmedi. Bildirim alamayacaksınız.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
 
     // Geri Tuşu (Back Button) Davranışı
     BackHandler {
@@ -197,29 +326,45 @@ fun UygulamaNavigasyonu() {
                     }
                 }
 
+                var userPoints by remember { mutableStateOf(0) }
+
+                DisposableEffect(currentUser) {
+                    var listener: com.google.firebase.firestore.ListenerRegistration? = null
+                    if (currentUser != null) {
+                        listener = FirebaseFirestore.getInstance().collection("users").document(currentUser!!.uid)
+                            .addSnapshotListener { snapshot, e ->
+                                if (e != null) return@addSnapshotListener
+                                if (snapshot != null && snapshot.exists()) {
+                                    userPoints = snapshot.getLong("points")?.toInt() ?: 0
+                                }
+                            }
+                    }
+                    onDispose { listener?.remove() }
+                }
+
                 if (currentUser == null) {
-                    // Uygulama açılışında otomatik anonim giriş yap (Google Sign-in yerine)
                     LaunchedEffect(Unit) {
                         try {
                             val auth = FirebaseAuth.getInstance()
                             if (auth.currentUser == null) {
                                 auth.signInAnonymously().await()
                                 currentUser = auth.currentUser
-                                Log.d("Auth", "Anonim giriş yapıldı: ${currentUser?.uid}")
                             } else {
                                 currentUser = auth.currentUser
                             }
-                        } catch (e: Exception) {
-                            Log.e("Auth", "Anonim giriş hatası", e)
-                        }
+                        } catch (e: Exception) {}
                     }
                 } else {
-                    // Sağ üstte kullanıcı id'sinin ufak bir parçası veya durumu
-                    Text(
-                        text = "Aktif (Anonim)",
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.CheckCircle, contentDescription = "Puan", tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "$userPoints Puan",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -265,23 +410,28 @@ fun UygulamaNavigasyonu() {
                                     val dbPass = doc.getString("password")
 
                                     if (dbUser == username && dbPass == password) {
+                                        prefs.edit().putBoolean("isAdmin", true).apply()
+                                        isAdminUser = true
                                         mevcutEkran = Ekran.ADMIN
                                         showAdminDialog = false
                                         Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
+
+                                        // Admin giriş yaptığında FCM Token'ını kaydet (Bildirim alabilmesi için)
+                                        try {
+                                            val token = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
+                                            FirebaseFirestore.getInstance()
+                                                .collection("admin_tokens")
+                                                .document(token) // Token'ı ID olarak kullanıp mükerrer kaydı önleriz
+                                                .set(mapOf("token" to token, "timestamp" to System.currentTimeMillis()))
+                                                .await()
+                                        } catch (e: Exception) {
+                                            Log.e("AdminLogin", "Token kaydedilemedi", e)
+                                        }
                                     } else {
                                         Toast.makeText(context, "Hatalı Kullanıcı Adı veya Şifre", Toast.LENGTH_SHORT).show()
                                     }
                                 } catch (e: Exception) {
-                                    // Eğer Firestore'da belge yoksa veya internet çekmiyorsa fallback olarak Base64 kontrolü (Kullanıcı İsteği)
-                                    val encodedUser = android.util.Base64.encodeToString(username.toByteArray(), android.util.Base64.NO_WRAP)
-                                    val encodedPass = android.util.Base64.encodeToString(password.toByteArray(), android.util.Base64.NO_WRAP)
-                                    if (encodedUser == "eWF6aGFtaXQ=" && encodedPass == "NzE1ODU5") {
-                                        mevcutEkran = Ekran.ADMIN
-                                        showAdminDialog = false
-                                        Toast.makeText(context, "Admin Paneline Hoşgeldiniz", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Bağlantı kurulamadı veya Hatalı Giriş", Toast.LENGTH_LONG).show()
-                                    }
+                                    Toast.makeText(context, "Bağlantı hatası veya yetkisiz giriş.", Toast.LENGTH_LONG).show()
                                 } finally {
                                     isLoggingIn = false
                                 }
@@ -303,106 +453,270 @@ fun UygulamaNavigasyonu() {
             when (mevcutEkran) {
                 Ekran.LOBI -> LobiEkrani(
                     isLoggedIn = currentUser != null,
+                    isAdmin = isAdminUser,
                     onNavigateToHarita = { mevcutEkran = Ekran.HARITA },
-                    onNavigateToTakip = { mevcutEkran = Ekran.TAKIP }
+                    onNavigateToTakip = { mevcutEkran = Ekran.TAKIP },
+                    onNavigateToAdmin = { mevcutEkran = Ekran.ADMIN }
                 )
-                Ekran.HARITA -> HaritaEkrani { mevcutEkran = Ekran.LOBI }
+                Ekran.HARITA -> HaritaEkrani(
+                    autoOpenSheet = autoOpenSignalSheet,
+                    onSheetOpened = { autoOpenSignalSheet = false },
+                    onComplete = { mevcutEkran = Ekran.LOBI }
+                )
                 Ekran.TAKIP -> TakipEkrani()
-                Ekran.ADMIN -> AdminEkrani()
+                Ekran.ADMIN -> AdminEkrani(
+                    onLogout = {
+                        prefs.edit().putBoolean("isAdmin", false).apply()
+                        isAdminUser = false
+                        mevcutEkran = Ekran.LOBI
+                        Toast.makeText(context, "Admin çıkışı yapıldı.", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+fun Premium3DButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    gradientColors: List<Color>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Basılma animasyonu (3D basılma hissi)
+    val scale by animateFloatAsState(if (isPressed) 0.95f else 1f)
+    val shadowElevation by animateFloatAsState(if (isPressed) 2f else 12f)
+
+    Button(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(80.dp)
+            .padding(horizontal = 8.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+        shape = RoundedCornerShape(24.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+        contentPadding = PaddingValues(0.dp),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = shadowElevation.dp,
+            pressedElevation = 2.dp
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.verticalGradient(colors = gradientColors),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                .padding(horizontal = 24.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp), tint = Color.White)
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = text,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    letterSpacing = 1.sp
+                )
             }
         }
     }
 }
 
 @Composable
-fun LobiEkrani(isLoggedIn: Boolean, onNavigateToHarita: () -> Unit, onNavigateToTakip: () -> Unit) {
+fun BannerAdView() {
     val context = LocalContext.current
+    AndroidView(
+        modifier = Modifier.fillMaxWidth(),
+        factory = { context ->
+            AdView(context).apply {
+                setAdSize(AdSize.BANNER)
+                adUnitId = "ca-app-pub-5879474591831999/9816381152"
+                loadAd(AdRequest.Builder().build())
+            }
+        }
+    )
+}
+
+data class Duyuru(
+    val title: String = "",
+    val body: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Composable
+fun LobiEkrani(isLoggedIn: Boolean, isAdmin: Boolean, onNavigateToHarita: () -> Unit, onNavigateToTakip: () -> Unit, onNavigateToAdmin: () -> Unit) {
+    val context = LocalContext.current
+    var showDisclaimerDialog by remember { mutableStateOf(false) }
+    var duyurular by remember { mutableStateOf<List<Duyuru>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        try {
+            val snapshot = FirebaseFirestore.getInstance().collection("duyurular")
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(3)
+                .get().await()
+            duyurular = snapshot.toObjects(Duyuru::class.java)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Karşıyaka Belediye İşçisi Görseli
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
+            IconButton(onClick = { showDisclaimerDialog = true }) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = "Bilgi / Sorumluluk Reddi",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        // Orijinal Sinyal 35.5 Uygulama Amblemi
         androidx.compose.foundation.Image(
-            painter = painterResource(id = R.drawable.belediye_iscisi),
-            contentDescription = "Karşıyaka Belediyesi İşçisi",
+            painter = painterResource(id = R.drawable.lobby_logo),
+            contentDescription = "Sinyal 35.5 Amblemi",
             modifier = Modifier
                 .fillMaxWidth()
                 .height(200.dp)
                 .padding(bottom = 16.dp),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Fit
         )
 
-        Spacer(modifier = Modifier.weight(0.2f))
-        Text(
-            text = "SİNYAL 35.5",
-            style = MaterialTheme.typography.displayMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 2.sp
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = "Çözüme ortak oluyoruz, kentimizi birlikte güzelleştiriyoruz.",
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-            fontWeight = FontWeight.Medium
-        )
+        // Başlık ve Tipografi
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
+            shadowElevation = 8.dp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "SİNYAL 35.5",
+                    style = MaterialTheme.typography.displaySmall,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Çözüme ortak oluyoruz,\nkentimizi güzelleştiriyoruz.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        // Duyurular Bölümü
+        if (duyurular.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Belediyeden Duyurular", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(bottom = 8.dp))
+                    duyurular.forEach { duyuru ->
+                        Text("• ${duyuru.title}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(duyuru.body, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.weight(1f))
 
-        Button(
+        if (isAdmin) {
+            Premium3DButton(
+                text = "ADMİN PANELİNE GİT",
+                icon = Icons.Filled.Warning, // Yada baska ikon
+                gradientColors = listOf(Color(0xFF8E24AA), Color(0xFF4A148C)), // Mor
+                onClick = onNavigateToAdmin
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        if (showDisclaimerDialog) {
+            AlertDialog(
+                onDismissRequest = { showDisclaimerDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Warning, contentDescription = "Uyarı", tint = Color(0xFFF57F17), modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Sorumluluk Reddi Beyanı", fontWeight = FontWeight.Bold)
+                    }
+                },
+                text = {
+                    Text(
+                        "Bu uygulama tamamen bağımsız ve sivil bir platformdur. Hiçbir devlet kurumu, belediye veya resmi makam ile bağlantısı yoktur veya onları temsil etmez. Sadece vatandaşların çevrelerindeki sorunları haritalandırması için geliştirilmiştir.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Justify
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDisclaimerDialog = false }) {
+                        Text("Anladım")
+                    }
+                }
+            )
+        }
+
+        Premium3DButton(
+            text = "SİNYAL ÇAK",
+            icon = Icons.Filled.Warning,
+            gradientColors = listOf(Color(0xFFFF5252), Color(0xFFD32F2F)),
             onClick = {
                 if (isLoggedIn) onNavigateToHarita()
                 else Toast.makeText(context, "Lütfen önce giriş yapın!", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White
-            ),
-            elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 10.dp,
-                pressedElevation = 2.dp
-            )
-        ) {
-            Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(28.dp))
-            Spacer(modifier = Modifier.width(12.dp))
-            Text("SİNYAL ÇAK", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-        }
+            }
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Button(
+        Premium3DButton(
+            text = "BİLDİRİMLERİMİ TAKİP ET",
+            icon = Icons.Filled.Build,
+            gradientColors = listOf(Color(0xFF4CAF50), Color(0xFF2E7D32)),
             onClick = {
                 if (isLoggedIn) onNavigateToTakip()
                 else Toast.makeText(context, "Lütfen önce giriş yapın!", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.secondary,
-                contentColor = Color.White
-            ),
-            elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 10.dp,
-                pressedElevation = 2.dp
-            )
-        ) {
-            Icon(Icons.Filled.Build, contentDescription = null, modifier = Modifier.size(28.dp))
-            Spacer(modifier = Modifier.width(12.dp))
-            Text("BİLDİRİMLERİMİ TAKİP ET", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
+            }
+        )
 
         Spacer(modifier = Modifier.weight(0.5f))
+        BannerAdView()
     }
 }
 
@@ -449,11 +763,12 @@ fun flashLightEffect(context: Context, coroutineScope: CoroutineScope) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HaritaEkrani(onComplete: () -> Unit) {
+fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {}, onComplete: () -> Unit) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
     var showSheet by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
 
     // Anlık Konum
     var currentLocation by remember { mutableStateOf<LatLng?>(null) }
@@ -486,6 +801,10 @@ fun HaritaEkrani(onComplete: () -> Unit) {
 
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(karsiyakaMerkez, 13f)
+    }
+
+    fun isLocationInKarsiyaka(lat: Double, lng: Double): Boolean {
+        return karsiyakaBounds.contains(LatLng(lat, lng))
     }
 
     // Haritada Görünen Sinyaller
@@ -551,17 +870,20 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                         isAddressResolved = false
                         failedAddressRetries = 0
 
-                        resolveAddress(location.latitude, location.longitude) { address ->
-                            if (address != null) {
-                                addressText = address
-                                isAddressResolved = true
-                            } else {
-                                addressText = "Adres alınamadı. (Hata: İnternet veya Servis)"
-                                failedAddressRetries++
+                        if (isLocationInKarsiyaka(location.latitude, location.longitude)) {
+                            resolveAddress(location.latitude, location.longitude) { address ->
+                                if (address != null) {
+                                    addressText = address
+                                    isAddressResolved = true
+                                } else {
+                                    addressText = "Adres alınamadı. (Hata: İnternet veya Servis)"
+                                    failedAddressRetries++
+                                }
                             }
+                            showSheet = true
+                        } else {
+                            Toast.makeText(context, "Hata: Sadece Karşıyaka ilçe sınırları içerisinden sinyal gönderebilirsiniz.", Toast.LENGTH_LONG).show()
                         }
-
-                        showSheet = true
                     } else {
                         Toast.makeText(context, "Konum alınamadı, lütfen GPS'i kontrol edin.", Toast.LENGTH_SHORT).show()
                     }
@@ -588,7 +910,41 @@ fun HaritaEkrani(onComplete: () -> Unit) {
         }
     }
 
+
+    // --- SALLAYARAK İHBAR EKRANINI OTOMATİK AÇ ---
+    LaunchedEffect(autoOpenSheet) {
+        if (autoOpenSheet && hasLocationPermission) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
+                    if (location != null) {
+                        if (isLocationInKarsiyaka(location.latitude, location.longitude)) {
+                            currentLocation = com.google.android.gms.maps.model.LatLng(location.latitude, location.longitude)
+                            addressText = "Adres tespit ediliyor..."
+                            isAddressResolved = false
+                            failedAddressRetries = 0
+                            resolveAddress(location.latitude, location.longitude) { address ->
+                                if (address != null) {
+                                    addressText = address
+                                    isAddressResolved = true
+                                } else {
+                                    addressText = "Adres alınamadı."
+                                    failedAddressRetries++
+                                }
+                            }
+                            showSheet = true
+                            onSheetOpened()
+                        } else {
+                            Toast.makeText(context, "Sadece Karşıyaka sınırları içerisinden ihbar yapabilirsiniz.", Toast.LENGTH_SHORT).show()
+                            onSheetOpened() // Reset trigger
+                        }
+                    }
+                }
+            } catch (e: SecurityException) { }
+        }
+    }
+
     val yelkenliIcon = remember { getBitmapDescriptorFromVector(context, R.drawable.ic_yelkenli_pin) }
+    var isHeatmapMode by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         GoogleMap(
@@ -600,14 +956,36 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                 minZoomPreference = 12f
             )
         ) {
-            haritaSinyalleri.forEach { sinyal ->
-                Marker(
-                    state = MarkerState(position = LatLng(sinyal.lat, sinyal.lng)),
-                    title = "Durum: ${sinyal.durum} | Adres: ${if(sinyal.adres.isNotBlank()) sinyal.adres else "Bilinmiyor"}",
-                    snippet = sinyal.aciklama,
-                    icon = yelkenliIcon
-                )
+            if (!isHeatmapMode) {
+                // Normal Pin Modu
+                haritaSinyalleri.forEach { sinyal ->
+                    Marker(
+                        state = MarkerState(position = LatLng(sinyal.lat, sinyal.lng)),
+                        title = "Durum: ${sinyal.durum} | Adres: ${if(sinyal.adres.isNotBlank()) sinyal.adres else "Bilinmiyor"}",
+                        snippet = sinyal.aciklama,
+                        icon = yelkenliIcon
+                    )
+                }
+            } else if (haritaSinyalleri.isNotEmpty()) {
+                // Şehir Isı (Risk) Haritası Modu
+                val latLngs = haritaSinyalleri.map { LatLng(it.lat, it.lng) }
+                val provider = HeatmapTileProvider.Builder()
+                    .data(latLngs)
+                    .radius(40) // Çukurların/Sorunların parladığı yarıçap
+                    .opacity(0.8)
+                    .build()
+                TileOverlay(tileProvider = provider)
             }
+        }
+
+        // Heatmap Toggle Butonu (Sağ Üstte)
+        FloatingActionButton(
+            onClick = { isHeatmapMode = !isHeatmapMode },
+            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).padding(top = 48.dp), // AppBar'ın altına gelmesi için margin
+            containerColor = if (isHeatmapMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+            contentColor = Color.White
+        ) {
+            Icon(Icons.Filled.Warning, contentDescription = "Isı Haritası")
         }
 
         Button(
@@ -718,13 +1096,46 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                         }
                     }
 
-                    OutlinedTextField(
-                        value = yorum,
-                        onValueChange = { yorum = it },
-                        label = { Text("Lütfen sorunu tam, açık, anlaşılır ve nazik bir dille yazın (En az 20 karakter)*") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 4
-                    )
+                    // Sesli İhbar Asistanı (Voice to Text)
+                    val speechLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.StartActivityForResult()
+                    ) { result ->
+                        if (result.resultCode == Activity.RESULT_OK) {
+                            val data = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                            if (!data.isNullOrEmpty()) {
+                                yorum += " " + data[0] // Mevcut yorumun sonuna sesi yazıya çevirip ekle
+                            }
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = yorum,
+                            onValueChange = { yorum = it },
+                            label = { Text("Sesi Yazıya Çevir veya Elle Yaz") },
+                            modifier = Modifier.weight(1f),
+                            minLines = 3
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        FloatingActionButton(
+                            onClick = {
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR") // Türkçe dikte
+                                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Sorunu anlatın... (Örn: Boru patladı)")
+                                }
+                                try {
+                                    speechLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Cihazınızda sesli yazma desteklenmiyor.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = Color.White
+                        ) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = "Sesli İhbar")
+                        }
+                    }
 
                     var isSubmitting by remember { mutableStateOf(false) }
                     Button(
@@ -748,6 +1159,21 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                             uploadedImageUrl = storageRef.downloadUrl.await().toString()
                                         }
 
+                                        val fcmToken = try {
+                                            FirebaseMessaging.getInstance().token.await()
+                                        } catch (e: Exception) { null }
+
+                                        val lowercaseYorum = yorum.lowercase()
+                                        val akilliKategori = when {
+                                            lowercaseYorum.contains("su") || lowercaseYorum.contains("patlak") || lowercaseYorum.contains("boru") -> "Altyapı (Su)"
+                                            lowercaseYorum.contains("çöp") || lowercaseYorum.contains("temizlik") -> "Çevre Temizliği"
+                                            lowercaseYorum.contains("çukur") || lowercaseYorum.contains("asfalt") || lowercaseYorum.contains("yol") -> "Yol / Kaldırım"
+                                            lowercaseYorum.contains("lamba") || lowercaseYorum.contains("aydınlatma") || lowercaseYorum.contains("ışık") -> "Aydınlatma"
+                                            lowercaseYorum.contains("park") || lowercaseYorum.contains("ağaç") || lowercaseYorum.contains("çim") -> "Park / Bahçe"
+                                            lowercaseYorum.contains("hayvan") || lowercaseYorum.contains("kedi") || lowercaseYorum.contains("köpek") -> "Sokak Hayvanları"
+                                            else -> "Genel İhbar"
+                                        }
+
                                         val userId = FirebaseAuth.getInstance().currentUser?.uid ?: "anonim"
                                         val yeniSinyal = Sinyal(
                                             id = UUID.randomUUID().toString(),
@@ -758,12 +1184,34 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                             telefon = telefon,
                                             adres = addressText,
                                             aciklama = yorum,
-                                            photoUri = uploadedImageUrl
+                                            photoUri = uploadedImageUrl,
+                                            kategori = akilliKategori,
+                                            fcmToken = fcmToken
                                         )
 
-                                        FirebaseFirestore.getInstance().collection("sinyaller")
-                                            .document(yeniSinyal.id)
-                                            .set(yeniSinyal).await()
+                                        val db = FirebaseFirestore.getInstance()
+                                        db.collection("sinyaller").document(yeniSinyal.id).set(yeniSinyal).await()
+
+                                        try {
+                                            val userRef = db.collection("users").document(userId)
+                                            db.runTransaction { transaction ->
+                                                val snapshot = transaction.get(userRef)
+                                                if (snapshot.exists()) {
+                                                    val currentPoints = snapshot.getLong("points") ?: 0
+                                                    transaction.update(userRef, "points", currentPoints + 10)
+                                                } else {
+                                                    transaction.set(userRef, mapOf("points" to 10L))
+                                                }
+                                            }.await()
+                                        } catch (e: Exception) {}
+
+                                        NotificationSender.sendNotificationToAdmins(context, isimSoyisim, yorum) { success, msg ->
+                                            coroutineScope.launch(Dispatchers.Main) {
+                                                if (!success) {
+                                                    Toast.makeText(context, "Adminlere Bildirim Hatası: $msg", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        }
 
                                         showSuccessDialog = true
                                         flashLightEffect(context, coroutineScope)
@@ -772,6 +1220,10 @@ fun HaritaEkrani(onComplete: () -> Unit) {
                                         isimSoyisim = ""
                                         telefon = ""
                                         photoUri = null
+
+                                        (context as? android.app.Activity)?.let {
+                                            AdManager.showInterstitialAd(it)
+                                        }
                                     } catch (e: Exception) {
                                         Log.e("FirebaseUpload", "Upload hatasi", e)
                                         Toast.makeText(context, "Gönderim Hatası: ${e.message}", Toast.LENGTH_LONG).show()
@@ -827,15 +1279,18 @@ fun HaritaEkrani(onComplete: () -> Unit) {
 fun TakipEkrani() {
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     var bildirimler by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
+    var tumSehir by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var seciliTab by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         try {
-            val snapshot = FirebaseFirestore.getInstance().collection("sinyaller")
-                .whereEqualTo("userId", userId)
-                .get().await()
-            // Firestore Composite Index gereksinimini aşmak için sıralamayı istemci tarafında (Client-side) yapıyoruz
+            val db = FirebaseFirestore.getInstance()
+            val snapshot = db.collection("sinyaller").whereEqualTo("userId", userId).get().await()
             bildirimler = snapshot.toObjects(Sinyal::class.java).sortedByDescending { it.timestamp }
+
+            val citySnapshot = db.collection("sinyaller").orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING).limit(50).get().await()
+            tumSehir = citySnapshot.toObjects(Sinyal::class.java)
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
@@ -844,54 +1299,75 @@ fun TakipEkrani() {
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
+        modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = "Bildirimlerim",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+        Text("Sinyal Takibi", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(bottom = 8.dp))
+
+        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+            Button(onClick = { seciliTab = 0 }, colors = ButtonDefaults.buttonColors(containerColor = if (seciliTab == 0) MaterialTheme.colorScheme.primary else Color.LightGray), modifier = Modifier.weight(1f).padding(end = 4.dp)) { Text("Benim Sinyallerim") }
+            Button(onClick = { seciliTab = 1 }, colors = ButtonDefaults.buttonColors(containerColor = if (seciliTab == 1) MaterialTheme.colorScheme.primary else Color.LightGray), modifier = Modifier.weight(1f).padding(start = 4.dp)) { Text("Şehir Akışı") }
+        }
 
         if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-        } else if (bildirimler.isEmpty()) {
-            Text("Henüz bir sinyal çakmadınız.", color = Color.Gray)
         } else {
-            bildirimler.forEach { sinyal ->
-                val durumRengi = when (sinyal.durum) {
-                    "Çözüldü" -> Color(0xFF4CAF50)
-                    "Bildirildi" -> Color(0xFF03A9F4)
-                    else -> Color(0xFFFFA000)
+            val gosterilecekListe = if (seciliTab == 0) bildirimler else tumSehir
+            if (gosterilecekListe.isEmpty()) {
+                Text(if (seciliTab == 0) "Henüz bir sinyal çakmadınız." else "Şehirde henüz bir sinyal yok.", color = Color.Gray)
+            } else {
+                gosterilecekListe.forEach { sinyal ->
+                    val durumRengi = when (sinyal.durum) {
+                        "Çözüldü" -> Color(0xFF4CAF50)
+                        "Bildirildi" -> Color(0xFF03A9F4)
+                        else -> Color(0xFFFFA000)
+                    }
+                    val konumMetni = if (sinyal.adres.isNotBlank()) sinyal.adres else "${sinyal.lat.toString().take(7)}, ${sinyal.lng.toString().take(7)}"
+                    BildirimKarti(
+                        konum = konumMetni,
+                        sorun = sinyal.aciklama,
+                        durum = sinyal.durum,
+                        adminMesaji = sinyal.adminCevap.ifEmpty { "Henüz yanıtlanmadı." },
+                        durumRengi = durumRengi,
+                        photoUri = sinyal.photoUri,
+                        afterPhotoUri = sinyal.afterPhotoUri,
+                        showUpvote = (seciliTab == 1),
+                        upvotes = sinyal.upvotes,
+                        onUpvote = {
+                            val coroutineScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO)
+                            coroutineScope.launch {
+                                try {
+                                    val db = FirebaseFirestore.getInstance()
+                                    db.runTransaction { transaction ->
+                                        val sf = db.collection("sinyaller").document(sinyal.id)
+                                        val snapshot = transaction.get(sf)
+                                        if (snapshot.exists()) {
+                                            val currentUpvotes = snapshot.getLong("upvotes") ?: 0
+                                            transaction.update(sf, "upvotes", currentUpvotes + 1)
+                                        }
+                                    }.await()
+                                } catch (e: Exception) {}
+                            }
+                        }
+                    )
                 }
-                val konumMetni = if (sinyal.adres.isNotBlank()) sinyal.adres else "${sinyal.lat.toString().take(7)}, ${sinyal.lng.toString().take(7)}"
-                BildirimKarti(
-                    konum = konumMetni,
-                    sorun = sinyal.aciklama,
-                    durum = sinyal.durum,
-                    adminMesaji = sinyal.adminCevap.ifEmpty { "Henüz yanıtlanmadı." },
-                    durumRengi = durumRengi
-                )
             }
         }
     }
 }
 
 @Composable
-fun AdminEkrani() {
+fun AdminEkrani(onLogout: () -> Unit) {
     var tumSinyaller by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
+    var isDescending by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
     fun fetchSinyaller() {
         coroutineScope.launch {
             try {
+                val direction = if (isDescending) com.google.firebase.firestore.Query.Direction.DESCENDING else com.google.firebase.firestore.Query.Direction.ASCENDING
                 val snapshot = FirebaseFirestore.getInstance().collection("sinyaller")
-                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .orderBy("timestamp", direction)
                     .get().await()
                 tumSinyaller = snapshot.toObjects(Sinyal::class.java)
             } catch (e: Exception) {
@@ -900,7 +1376,7 @@ fun AdminEkrani() {
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isDescending) {
         fetchSinyaller()
     }
 
@@ -910,40 +1386,166 @@ fun AdminEkrani() {
             .padding(16.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = "Admin Paneli - Tüm Sinyaller",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Tüm Sinyaller",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { isDescending = !isDescending }) {
+                    Text(if (isDescending) "↓ Eskiye" else "↑ Yeniye")
+                }
+                TextButton(onClick = onLogout) {
+                    Text("Çıkış Yap", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+
+        // Broadcast Notification UI
+        var broadcastTitle by remember { mutableStateOf("") }
+        var broadcastBody by remember { mutableStateOf("") }
+        var isBroadcasting by remember { mutableStateOf(false) }
+
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Tüm Kullanıcılara Bildirim Gönder (Duyuru)",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                OutlinedTextField(
+                    value = broadcastTitle,
+                    onValueChange = { broadcastTitle = it },
+                    label = { Text("Bildirim Başlığı") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = broadcastBody,
+                    onValueChange = { broadcastBody = it },
+                    label = { Text("Bildirim İçeriği") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        if (broadcastTitle.isNotBlank() && broadcastBody.isNotBlank()) {
+                            isBroadcasting = true
+                            // Firestore'a kaydet (Lobide görünmesi için)
+                            coroutineScope.launch {
+                                try {
+                                    val yeniDuyuru = Duyuru(title = broadcastTitle, body = broadcastBody)
+                                    FirebaseFirestore.getInstance().collection("duyurular").add(yeniDuyuru).await()
+
+                                    // Bildirimi gönder
+                                    NotificationSender.sendBroadcastNotification(context, broadcastTitle, broadcastBody) { success, msg ->
+                                        coroutineScope.launch(Dispatchers.Main) {
+                                            isBroadcasting = false
+                                            if (success) {
+                                                Toast.makeText(context, "Duyuru gönderildi ve lobiye eklendi!", Toast.LENGTH_SHORT).show()
+                                                broadcastTitle = ""
+                                                broadcastBody = ""
+                                            } else {
+                                                Toast.makeText(context, "Bildirim Hatası: $msg", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    isBroadcasting = false
+                                    Toast.makeText(context, "Duyuru kaydedilemedi: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } else {
+                            Toast.makeText(context, "Lütfen başlık ve içerik girin.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = !isBroadcasting,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(if (isBroadcasting) "Gönderiliyor..." else "Duyuru Gönder")
+                }
+            }
+        }
 
         tumSinyaller.forEach { sinyal ->
-            AdminBildirimKarti(sinyal = sinyal, onGuncelle = { id, durum, cevap ->
-                coroutineScope.launch {
-                    try {
-                        FirebaseFirestore.getInstance().collection("sinyaller").document(id)
-                            .update(mapOf("durum" to durum, "adminCevap" to cevap)).await()
-                        Toast.makeText(context, "Güncellendi", Toast.LENGTH_SHORT).show()
-                        fetchSinyaller() // Listeyi yenile
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "Hata: ${e.message}", Toast.LENGTH_SHORT).show()
+            AdminBildirimKarti(
+                sinyal = sinyal,
+                onSil = { id ->
+                    coroutineScope.launch {
+                        try {
+                            FirebaseFirestore.getInstance().collection("sinyaller").document(id).delete().await()
+                            Toast.makeText(context, "Sinyal Silindi", Toast.LENGTH_SHORT).show()
+                            fetchSinyaller()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Silme Hatası: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onGuncelle = { id, durum, cevap, cozumFotoUri ->
+                    coroutineScope.launch {
+                        try {
+                            var uploadedImageUrl: String? = sinyal.afterPhotoUri
+                            if (cozumFotoUri != null) {
+                                val storageRef = FirebaseStorage.getInstance().reference.child("cozum_fotograflari/${java.util.UUID.randomUUID()}.jpg")
+                                storageRef.putFile(cozumFotoUri).await()
+                                uploadedImageUrl = storageRef.downloadUrl.await().toString()
+                            }
+
+                            val updateMap = mutableMapOf<String, Any>("durum" to durum, "adminCevap" to cevap)
+                            if (uploadedImageUrl != null) {
+                                updateMap["afterPhotoUri"] = uploadedImageUrl
+                            }
+
+                            FirebaseFirestore.getInstance().collection("sinyaller").document(id).update(updateMap).await()
+                            Toast.makeText(context, "Güncellendi", Toast.LENGTH_SHORT).show()
+
+                            if (cevap.isNotBlank() && sinyal.fcmToken != null) {
+                                NotificationSender.sendNotificationToUser(
+                                    context = context,
+                                    fcmToken = sinyal.fcmToken,
+                                    durum = durum,
+                                    cevap = cevap
+                                ) { success, msg ->
+                                    coroutineScope.launch(Dispatchers.Main) {
+                                        if (!success) Toast.makeText(context, "Kullanıcıya Bildirim Hatası: $msg", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                            fetchSinyaller()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Hata: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
-            })
+            )
         }
     }
 }
 
 @Composable
-fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> Unit) {
+fun AdminBildirimKarti(
+    sinyal: Sinyal,
+    onGuncelle: (String, String, String, android.net.Uri?) -> Unit,
+    onSil: (String) -> Unit
+) {
     var cevap by remember(sinyal.adminCevap) { mutableStateOf(sinyal.adminCevap) }
     var seciliDurum by remember(sinyal.durum) { mutableStateOf(sinyal.durum) }
+    var isExpanded by remember { mutableStateOf(false) }
     val durumlar = listOf("İnceleniyor", "Bildirildi", "Çözüldü")
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).clickable { isExpanded = !isExpanded },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -951,118 +1553,153 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
             Text("Bildiren: ${sinyal.isimSoyisim.takeIf { it.isNotBlank() } ?: "Bilinmiyor"}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             Text("Telefon: ${sinyal.telefon.takeIf { it.isNotBlank() } ?: "Bilinmiyor"}", fontSize = 14.sp)
             Spacer(modifier = Modifier.height(4.dp))
-
             val konumMetni = if (sinyal.adres.isNotBlank()) sinyal.adres else "${sinyal.lat}, ${sinyal.lng}"
             Text("Adres: $konumMetni", fontSize = 13.sp, color = Color.DarkGray)
             Spacer(modifier = Modifier.height(4.dp))
-
+            Text("Kategori: ${sinyal.kategori}", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
             Text("Sorun: ${sinyal.aciklama}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Spacer(modifier = Modifier.height(8.dp))
 
-            if (sinyal.photoUri != null) {
-                AsyncImage(
-                    model = sinyal.photoUri,
-                    contentDescription = null,
-                    modifier = Modifier.height(100.dp).fillMaxWidth()
-                )
+            if (isExpanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-            }
 
-            // Durum Seçici
-            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-                durumlar.forEach { d ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(
-                            selected = (seciliDurum == d),
-                            onClick = { seciliDurum = d }
-                        )
-                        Text(d, fontSize = 12.sp)
+                if (sinyal.photoUri != null) {
+                    AsyncImage(
+                        model = sinyal.photoUri,
+                        contentDescription = null,
+                        modifier = Modifier.height(100.dp).fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                    durumlar.forEach { d ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = (seciliDurum == d), onClick = { seciliDurum = d })
+                            Text(d, fontSize = 12.sp)
+                        }
                     }
                 }
-            }
 
-            OutlinedTextField(
-                value = cevap,
-                onValueChange = { cevap = it },
-                label = { Text("Kullanıcıya Cevap Yazın") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Button(onClick = { onGuncelle(sinyal.id, seciliDurum, cevap) }) {
-                    Text("Durumu Güncelle")
+                var cozumFotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+                val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: android.net.Uri? ->
+                    cozumFotoUri = uri
                 }
 
-                val context = LocalContext.current
-                val coroutineScope = rememberCoroutineScope()
-                var isSending by remember { mutableStateOf(false) }
+                if (seciliDurum == "Çözüldü") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (cozumFotoUri != null || sinyal.afterPhotoUri != null) {
+                        val gosterilecekResim = cozumFotoUri ?: sinyal.afterPhotoUri
+                        Text("Çözüm (Sonrası) Fotoğrafı:", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        AsyncImage(model = gosterilecekResim, contentDescription = "Sonrası", modifier = Modifier.height(100.dp).fillMaxWidth())
+                        if (cozumFotoUri != null) TextButton(onClick = { cozumFotoUri = null }) { Text("Fotoğrafı İptal Et", color = Color.Red) }
+                    } else {
+                        Button(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Çözüm (Sonrası) Fotoğrafı Ekle")
+                        }
+                    }
+                }
 
-                Button(
-                    onClick = {
-                        isSending = true
-                        coroutineScope.launch {
-                            try {
-                                val adSoyad = sinyal.isimSoyisim.takeIf { it.isNotBlank() } ?: "Bilinmiyor"
-                                val tel = sinyal.telefon.takeIf { it.isNotBlank() } ?: "Bilinmiyor"
-                                val adres = if (sinyal.adres.isNotBlank()) sinyal.adres else "${sinyal.lat}, ${sinyal.lng}"
+                OutlinedTextField(value = cevap, onValueChange = { cevap = it }, label = { Text("Kullanıcıya Cevap Yazın") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
 
-                                val mesaj = "🚨 *YENİ İHBAR* 🚨\n\n" +
-                                        "👤 *Bildiren:* $adSoyad\n" +
-                                        "📞 *Telefon:* $tel\n" +
-                                        "📍 *Adres:* $adres\n" +
-                                        "📝 *Açıklama:* ${sinyal.aciklama}"
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    var isUpdating by remember { mutableStateOf(false) }
+                    Button(
+                        onClick = {
+                            isUpdating = true
+                            onGuncelle(sinyal.id, seciliDurum, cevap, cozumFotoUri)
+                        },
+                        enabled = !isUpdating
+                    ) { Text(if (isUpdating) "..." else "Güncelle") }
 
-                                val intent = Intent(Intent.ACTION_SEND)
-                                intent.type = "text/plain"
-                                intent.putExtra(Intent.EXTRA_TEXT, mesaj)
-                                intent.putExtra("jid", "905301251355@s.whatsapp.net")
-                                intent.setPackage("com.whatsapp")
+                    val context = LocalContext.current
+                    val coroutineScope = rememberCoroutineScope()
+                    var isSending by remember { mutableStateOf(false) }
 
-                                if (sinyal.photoUri != null) {
-                                    val uri = withContext(Dispatchers.IO) {
-                                        try {
-                                            val url = URL(sinyal.photoUri)
-                                            val connection = url.openConnection()
-                                            connection.connect()
-                                            val input = connection.getInputStream()
-                                            val file = File(context.cacheDir, "shared_image_${System.currentTimeMillis()}.jpg")
-                                            val output = FileOutputStream(file)
-                                            input.copyTo(output)
-                                            output.close()
-                                            input.close()
-                                            FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-                                        } catch (e: Exception) {
-                                            null
+                    Button(
+                        onClick = {
+                            isSending = true
+                            coroutineScope.launch {
+                                try {
+                                    val adSoyad = sinyal.isimSoyisim.takeIf { it.isNotBlank() } ?: "Bilinmiyor"
+                                    val tel = sinyal.telefon.takeIf { it.isNotBlank() } ?: "Bilinmiyor"
+                                    val adres = if (sinyal.adres.isNotBlank()) sinyal.adres else "${sinyal.lat}, ${sinyal.lng}"
+
+                                    val mesaj = "🚨 *YENİ İHBAR* 🚨\n\n" +
+                                            "👤 *Bildiren:* $adSoyad\n" +
+                                            "📞 *Telefon:* $tel\n" +
+                                            "📍 *Adres:* $adres\n" +
+                                            "📝 *Açıklama:* ${sinyal.aciklama}"
+
+                                    val intent = Intent(Intent.ACTION_SEND)
+                                    intent.type = "text/plain"
+                                    intent.putExtra(Intent.EXTRA_TEXT, mesaj)
+                                    intent.putExtra("jid", "905301251355@s.whatsapp.net")
+                                    intent.setPackage("com.whatsapp")
+
+                                    if (sinyal.photoUri != null) {
+                                        val uri = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                                            try {
+                                                val url = java.net.URL(sinyal.photoUri)
+                                                val connection = url.openConnection()
+                                                connection.connect()
+                                                val input = connection.getInputStream()
+                                                val file = java.io.File(context.cacheDir, "shared_image_${System.currentTimeMillis()}.jpg")
+                                                val output = java.io.FileOutputStream(file)
+                                                input.copyTo(output)
+                                                output.close()
+                                                input.close()
+                                                androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                                            } catch (e: Exception) {
+                                                null
+                                            }
+                                        }
+
+                                        if (uri != null) {
+                                            intent.type = "image/*"
+                                            intent.putExtra(Intent.EXTRA_STREAM, uri)
+                                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
                                     }
 
-                                    if (uri != null) {
-                                        intent.type = "image/*"
-                                        intent.putExtra(Intent.EXTRA_STREAM, uri)
-                                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
+                                    context.startActivity(intent)
+                                } catch (e: android.content.ActivityNotFoundException) {
+                                    Toast.makeText(context, "WhatsApp cihazda yüklü değil.", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gönderim sırasında hata oluştu.", Toast.LENGTH_SHORT).show()
+                                    e.printStackTrace()
+                                } finally {
+                                    isSending = false
                                 }
-
-                                context.startActivity(intent)
-                            } catch (e: android.content.ActivityNotFoundException) {
-                                Toast.makeText(context, "WhatsApp cihazda yüklü değil.", Toast.LENGTH_SHORT).show()
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Gönderim sırasında hata oluştu.", Toast.LENGTH_SHORT).show()
-                                e.printStackTrace()
-                            } finally {
-                                isSending = false
                             }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)), // WhatsApp Yeşili
+                        enabled = !isSending
+                    ) {
+                        if (isSending) {
+                             CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)), // WhatsApp Yeşili
-                    enabled = !isSending
-                ) {
-                    if (isSending) {
-                         CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                         Spacer(modifier = Modifier.width(8.dp))
+                        Text("Belediyeye İlet", color = Color.White)
                     }
-                    Text("Belediyeye İlet (WhatsApp)", color = Color.White)
+                }
+
+                var showDeleteDialog by remember { mutableStateOf(false) }
+                Button(onClick = { showDeleteDialog = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                    Text("Sinyali Sil")
+                }
+
+                if (showDeleteDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteDialog = false },
+                        title = { Text("Emin misiniz?") },
+                        text = { Text("Bu bildirimi kalıcı olarak silmek istediğinize emin misiniz?") },
+                        confirmButton = { TextButton(onClick = { showDeleteDialog = false; onSil(sinyal.id) }) { Text("Evet", color = MaterialTheme.colorScheme.error) } },
+                        dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Hayır") } }
+                    )
                 }
             }
         }
@@ -1070,52 +1707,72 @@ fun AdminBildirimKarti(sinyal: Sinyal, onGuncelle: (String, String, String) -> U
 }
 
 @Composable
-fun BildirimKarti(konum: String, sorun: String, durum: String, adminMesaji: String, durumRengi: Color) {
+fun BildirimKarti(
+    konum: String,
+    sorun: String,
+    durum: String,
+    adminMesaji: String,
+    durumRengi: Color,
+    photoUri: String? = null,
+    afterPhotoUri: String? = null,
+    showUpvote: Boolean = false,
+    upvotes: Int = 0,
+    onUpvote: (() -> Unit)? = null
+) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(konum, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = durumRengi.copy(alpha = 0.2f)
-                ) {
-                    Text(
-                        text = durum,
-                        color = durumRengi,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 12.sp
-                    )
+                Surface(shape = RoundedCornerShape(16.dp), color = durumRengi.copy(alpha = 0.2f)) {
+                    Text(text = durum, color = durumRengi, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), fontSize = 12.sp)
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text("Sizin Bildiriminiz: $sorun", style = MaterialTheme.typography.bodyMedium)
 
+            if (photoUri != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                if (afterPhotoUri != null) {
+                    Text("Öncesi / Sonrası Karşılaştırması", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        AsyncImage(model = photoUri, contentDescription = "Öncesi", modifier = Modifier.weight(1f).height(100.dp), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        AsyncImage(model = afterPhotoUri, contentDescription = "Sonrası", modifier = Modifier.weight(1f).height(100.dp), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                    }
+                } else {
+                    AsyncImage(model = photoUri, contentDescription = "Sinyal Fotoğrafı", modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.background,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("Yetkili Yanıtı:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(adminMesaji, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                }
+            }
+
+            if (showUpvote && onUpvote != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = { onUpvote() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    modifier = Modifier.fillMaxWidth().height(40.dp)
+                ) {
+                    Icon(Icons.Filled.CheckCircle, contentDescription = "Ben de Yaşıyorum", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Ben de Yaşıyorum ($upvotes)", fontSize = 13.sp)
                 }
             }
         }
