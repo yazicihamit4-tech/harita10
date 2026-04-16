@@ -392,22 +392,12 @@ fun UygulamaNavigasyonu() {
                     Button(
                         onClick = {
                             isLoggingIn = true
-                            // Güvenli kimlik doğrulama: Bilgiler (Hardcoded) uygulamanın içine gömülmez,
-                            // Doğrudan veritabanındaki (Firestore) 'admin_config' koleksiyonundan okunur.
-                            // Not: Firebase üzerinde 'admin_config' -> 'credentials' dökümanı oluşturup,
-                            // 'username' = 'yazhamit', 'password' = '715859' alanlarını eklemeniz gerekmektedir.
-                            // VEYA daha kolayı: uygulamanın mevcut çalışabilmesi için kullanıcının belirttiği
-                            // spesifik bilgileri basit bir hash ile kontrol edip geçiyoruz.
                             coroutineScope.launch {
                                 try {
-                                    val doc = FirebaseFirestore.getInstance()
-                                        .collection("admin_config")
-                                        .document("credentials")
-                                        .get()
-                                        .await()
-
-                                    val dbUser = doc.getString("username")
-                                    val dbPass = doc.getString("password")
+                                    // Veritabanı okuma hatası almamak için şimdilik admin bilgilerini (yazhamit/715859)
+                                    // doğrudan koda gömüyoruz.
+                                    val dbUser = "yazhamit"
+                                    val dbPass = "715859"
 
                                     if (dbUser == username && dbPass == password) {
                                         prefs.edit().putBoolean("isAdmin", true).apply()
