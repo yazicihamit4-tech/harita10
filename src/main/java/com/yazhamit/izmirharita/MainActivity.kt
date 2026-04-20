@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.location.Geocoder
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import android.location.Location
 import kotlinx.coroutines.Dispatchers
@@ -199,6 +200,9 @@ fun UygulamaNavigasyonu() {
     var currentUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
 
     val activity = context as? Activity
+    val deviceId = remember {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown_device"
+    }
     val coroutineScope = rememberCoroutineScope()
 
     // Shake (Salla İhbar Et) Sensor Logic
@@ -328,10 +332,10 @@ fun UygulamaNavigasyonu() {
 
                 var userPoints by remember { mutableStateOf(0) }
 
-                DisposableEffect(currentUser) {
+                DisposableEffect(deviceId) {
                     var listener: com.google.firebase.firestore.ListenerRegistration? = null
-                    if (currentUser != null) {
-                        listener = FirebaseFirestore.getInstance().collection("users").document(currentUser!!.uid)
+                    if (deviceId != "unknown_device") {
+                        listener = FirebaseFirestore.getInstance().collection("users").document(deviceId)
                             .addSnapshotListener { snapshot, e ->
                                 if (e != null) return@addSnapshotListener
                                 if (snapshot != null && snapshot.exists()) {
@@ -342,6 +346,20 @@ fun UygulamaNavigasyonu() {
                     onDispose { listener?.remove() }
                 }
 
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.CheckCircle, contentDescription = "Puan", tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "$userPoints Puan",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Hala anonim girişe ihtiyaç duyuyoruz çünkü Firestore / Storage yetkilendirme kuralları (Rules)
+                // sadece Authentication olan kullanıcılara izin veriyor olabilir.
+                // Verileri kaydetmek/okumak için "deviceId" kullansak bile uygulamanın Firebase'e bağlı olması gerek.
                 if (currentUser == null) {
                     LaunchedEffect(Unit) {
                         try {
@@ -353,17 +371,6 @@ fun UygulamaNavigasyonu() {
                                 currentUser = auth.currentUser
                             }
                         } catch (e: Exception) {}
-                    }
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.CheckCircle, contentDescription = "Puan", tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "$userPoints Puan",
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold
-                        )
                     }
                 }
             }
@@ -1166,10 +1173,10 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
                                             else -> "Genel İhbar"
                                         }
 
-                                        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: "anonim"
+                                        val deviceIdLocal = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "anonim"
                                         val yeniSinyal = Sinyal(
                                             id = UUID.randomUUID().toString(),
-                                            userId = userId,
+                                            userId = deviceIdLocal,
                                             lat = currentLocation?.latitude ?: 0.0,
                                             lng = currentLocation?.longitude ?: 0.0,
                                             isimSoyisim = isimSoyisim,
@@ -1185,7 +1192,7 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
                                         db.collection("sinyaller").document(yeniSinyal.id).set(yeniSinyal).await()
 
                                         try {
-                                            val userRef = db.collection("users").document(userId)
+                                            val userRef = db.collection("users").document(deviceIdLocal)
                                             db.runTransaction { transaction ->
                                                 val snapshot = transaction.get(userRef)
                                                 if (snapshot.exists()) {
@@ -1269,7 +1276,8 @@ fun HaritaEkrani(autoOpenSheet: Boolean = false, onSheetOpened: () -> Unit = {},
 
 @Composable
 fun TakipEkrani() {
-    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val context = LocalContext.current
+    val deviceIdLocal = remember { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "" }
     var bildirimler by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
     var tumSehir by remember { mutableStateOf<List<Sinyal>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -1278,7 +1286,7 @@ fun TakipEkrani() {
     LaunchedEffect(Unit) {
         try {
             val db = FirebaseFirestore.getInstance()
-            val snapshot = db.collection("sinyaller").whereEqualTo("userId", userId).get().await()
+            val snapshot = db.collection("sinyaller").whereEqualTo("userId", deviceIdLocal).get().await()
             bildirimler = snapshot.toObjects(Sinyal::class.java).sortedByDescending { it.timestamp }
 
             val citySnapshot = db.collection("sinyaller").orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING).limit(50).get().await()
