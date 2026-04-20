@@ -1442,28 +1442,17 @@ fun AdminEkrani(onLogout: () -> Unit) {
                     onClick = {
                         if (broadcastTitle.isNotBlank() && broadcastBody.isNotBlank()) {
                             isBroadcasting = true
-                            // Firestore'a kaydet (Lobide görünmesi için)
-                            coroutineScope.launch {
-                                try {
-                                    val yeniDuyuru = Duyuru(title = broadcastTitle, body = broadcastBody)
-                                    FirebaseFirestore.getInstance().collection("duyurular").add(yeniDuyuru).await()
-
-                                    // Bildirimi gönder
-                                    NotificationSender.sendBroadcastNotification(context, broadcastTitle, broadcastBody) { success, msg ->
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            isBroadcasting = false
-                                            if (success) {
-                                                Toast.makeText(context, "Duyuru gönderildi ve lobiye eklendi!", Toast.LENGTH_SHORT).show()
-                                                broadcastTitle = ""
-                                                broadcastBody = ""
-                                            } else {
-                                                Toast.makeText(context, "Bildirim Hatası: $msg", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    }
-                                } catch (e: Exception) {
+                            // Bildirimi gönder (Sunucu tarafı hem bildirimi atacak hem de veritabanına kaydedecek)
+                            NotificationSender.sendBroadcastNotification(context, broadcastTitle, broadcastBody) { success, msg ->
+                                coroutineScope.launch(Dispatchers.Main) {
                                     isBroadcasting = false
-                                    Toast.makeText(context, "Duyuru kaydedilemedi: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    if (success) {
+                                        Toast.makeText(context, "Duyuru başarıyla gönderildi ve lobiye eklendi!", Toast.LENGTH_SHORT).show()
+                                        broadcastTitle = ""
+                                        broadcastBody = ""
+                                    } else {
+                                        Toast.makeText(context, "Sunucu Hatası: $msg", Toast.LENGTH_LONG).show()
+                                    }
                                 }
                             }
                         } else {
